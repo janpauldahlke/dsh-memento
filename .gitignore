@@ -1,0 +1,23 @@
+# Local-only (never published — see skills/dsh-out-of-tree-plugin/SKILL.md "Publish later")
+ENV.md
+
+# Deps / transient
+node_modules/
+dist/
+*.log
+.DS_Store
+
+# Session leftovers
+**/.dsh-session
+.dsh/
+
+# NOTE: diverges from dsh-agent-processes on purpose.
+#   - `lib/` IS tracked (siblings track it; `prepare` falls back to prebuilt lib/).
+#   - `agent/` IS tracked, unlike the sibling, so the overnight agent's acceptance
+#     scripts survive into the morning review. Drop it from git before a public
+#     publish if you'd rather not ship them.
+
+# Secrets (never published)
+.env
+.env.*
+*.key
