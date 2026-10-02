@@ -9,7 +9,8 @@
 lore across sessions, for **local-only agents**, without a second VLM, a memory
 sidecar, or a vector store.
 
-Status: **planned / pre-code.** No installable plugin yet.
+Status: **M0 skeleton** — installable dual-face plugin: loads both halves and
+answers `GET /api/dsh-memento/health`. No memory features yet (M1+).
 
 | Document | Role |
 | --- | --- |
@@ -75,4 +76,4 @@ messages) but kept as a read-only archaeology tool — `plan/DESIGN.md` §5.
 
 ## License
 
-TBD (likely MIT, matching siblings).
+MIT, matching the sibling plugins (see `LICENSE`).
