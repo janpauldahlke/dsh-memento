@@ -29,8 +29,10 @@ it describes a superseded design and will make you build the wrong plugin.
   rotated Next 3. No "shipped" claims without all three.
 - Start every working block by re-reading `plan/STATUS.md`. End every block by
   rewriting it. Keep it ≤45 lines. Mid-block context is disposable.
-- Sacred: never touch `:3080` (dsh) or `:8080` (llama). `:11434` was shut down
-  on purpose — do not start it. Acceptance is `:3090` only.
+- Sacred: never touch `:3080` / `:8080` / `:11434`. `:3090` is **human-owned**
+  (`./agent/boot-3090.sh`). Accept reuses it — never spawn/kill dsh from the agent.
+- Keys settled: `LLAMACPP_API_KEY` + `COMPACT_API_KEY`. Do not discuss or test keys.
+  GPU CUDA OOM = hard stop.
 - An `origin` remote exists. **Never push.** Local commits only.
 - No test theater. Edit → `node build.mjs` → acceptance script → human judges.
 - Blocked? Write it in `plan/STATUS.md` and move to another slice. Do not thrash.
@@ -47,6 +49,7 @@ frontmatter schema, tags, types, or scores. The plugin **never** writes
    `git init` yourself.
 2. Re-read `plan/STATUS.md`. Confirm Next 3; clear the self-check blocker if it passes.
 3. `npm install` in the package root while the network is known-good.
-4. `. ./.env.local` before booting acceptance on `:3090` — `dsh` needs the API
-   keys in it and will otherwise fail to start. **Never print those keys.**
-5. M0 only: `plan/M0-skeleton.md`. Stop at `accept-m0.mjs` green + commit + STATUS rewrite.
+4. Confirm human-owned `:3090` is healthy
+   (`curl -s http://127.0.0.1:3090/api/dsh-memento/health`). If not → STATUS
+   blocker and stop (do not boot dsh yourself). **Never print keys.**
+5. Continue from `plan/STATUS.md` Next 3 (M1 in progress on disk).

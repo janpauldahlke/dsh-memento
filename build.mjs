@@ -40,6 +40,23 @@ await build({
   target: 'es2024',
   sourcemap: true,
   external: ['@deepseek-ai/*'],
+  // assets/ME.template.md is embedded as a string literal, so the built
+  // bundle needs no runtime file lookup for the seed template.
+  loader: { '.md': 'text' },
+  logLevel: 'warning',
+})
+
+// ---- vault core (ESM, node-only; imported by the unit tests) ---------------
+// Built standalone so `node --test` runs the key-derivation/cap logic without
+// resolving the harness `@deepseek-ai/*` packages (external to this package).
+await build({
+  entryPoints: [join(root, 'src/host/vault.ts')],
+  outfile: join(root, 'lib/vault.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'es2024',
+  sourcemap: true,
   logLevel: 'warning',
 })
 

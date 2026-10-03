@@ -7,7 +7,7 @@
  *  2. package.json has `main`, `dsh.bundle.patch`, and `dsh.client`.
  *  3. cordis.patch.yml `name` === package.json `name`.
  *  4. GET http://127.0.0.1:3090/api/dsh-memento/health → JSON with
- *     ok === true and milestone === "M0".
+ *     ok === true and milestone === "M1" (M0's contract, milestone bumped).
  *  5. No side effects: two consecutive health requests return identical
  *     payloads, and this script performs no writes (read-only by construction).
  *
@@ -82,10 +82,10 @@ await check('3. cordis.patch.yml name === package.json name', async () => {
 })
 
 const first = await httpGet(BASE + ROUTE).catch((err) => ({ status: 0, body: null, raw: String(err) }))
-await check('4. GET :3090 health → ok=true, milestone=M0', async () => {
+await check('4. GET :3090 health → ok=true, milestone=M1', async () => {
   assert.equal(first.status, 200, `status ${first.status} (raw: ${first.raw.slice(0, 200)})`)
   assert.equal(first.body?.ok, true, `ok=${JSON.stringify(first.body?.ok)} (raw: ${first.raw.slice(0, 200)})`)
-  assert.equal(first.body?.milestone, 'M0', `milestone=${JSON.stringify(first.body?.milestone)}`)
+  assert.equal(first.body?.milestone, 'M1', `milestone=${JSON.stringify(first.body?.milestone)}`)
 })
 
 const second = await httpGet(BASE + ROUTE).catch((err) => ({ status: 0, body: null, raw: String(err) }))

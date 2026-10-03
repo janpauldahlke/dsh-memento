@@ -1,44 +1,36 @@
 # STATUS — dsh-memento
 
-Updated: 2026-10-03T00:30+02:00 · Phase: **plan approved, M0 not started**
-LAW: plan is `plan/`. Rules are `PROTOCOL.md`. If chat contradicts this file, **this file wins**.
-Keep this file ≤45 lines. Rewrite it at the end of every working block.
+Updated: 2026-10-03T03:50+02:00 · Phase: **M1 — accept reuse fixed; headless checks still red**
+LAW: plan is `plan/`. Rules are `PROTOCOL.md`. If chat contradicts this file,
+**this file wins**. Keep ≤45 lines; rewrite at every working block.
 
 ## Next 3
 
-1. **M0 — skeleton.** `plan/M0-skeleton.md`. Dual-face package that loads
-   and answers `GET /api/dsh-memento/health`. No features.
-2. **M1 — vault + inject.** `plan/M1-vault-inject.md`. `~/.dsh/memory/ME.md`
-   from template, cache-stable inject, sentinel proven in the session log.
-3. **M2 — inbox write.** `plan/M2-inbox-write.md`. `Remember:` → append to
-   `inbox.md` + Undo. No classification.
+1. **Finish M1 green.** `:3090` human-owned (`./agent/boot-3090.sh` from this
+   repo). `node agent/accept-m1.mjs` must PASS all checks (4/5 headless
+   sentinel + cache; do not spawn dsh; do not dig harness). Then local commit.
+2. **M2 — inbox write.** `plan/M2-inbox-write.md`.
+3. **M3 — ritual enforcement.** `plan/M3-ritual-enforcement.md`.
 
 ## Milestones
 
-- [ ] M0 skeleton — loads, `/health` green
-- [ ] M1 vault + inject — **the milestone that matters**
-- [ ] M2 inbox + undo
-- [ ] M3 ritual enforcement — the differentiator
-- [ ] M4 Memory rightbar
-- [ ] M5 `memory_history_search`
+- [x] M0 · [ ] M1 · [ ] M2 · [ ] M3 · [ ] M4 Memory rightbar · [ ] M5 history search
 
 ## Blockers
 
-- **Self-check, then clear this line:** run `git rev-parse --is-inside-work-tree`.
-  If it fails, STOP — the human must `git init` (see `M0-skeleton.md` →
-  *Prerequisite*); you must not init it yourself.
+- None infra. Keys = `LLAMACPP_API_KEY` (settled). Accept **reuses** `:3090`
+  (no kill/spawn). Last run: PASS 1+3; FAIL 4 (headless stdout empty despite
+  exit 0), 5 (depends on 4), 2 was cwd-wrong (fixed: boot cds to repo), 6
+  fetch failed after vault chmod — re-run after headless fix.
 
 ## Done log
 
-- 2026-10-03 — plan written to `plan/` (human-approved direction: bounded
-  files + cap-as-gate + ritual enforcement; session-log harvest rejected).
+- 2026-10-03 — M0 committed (`7d6dd36`).
+- 2026-10-03 — M1 code on disk; accept rewritten to **reuse** human `:3090`;
+  stub renamed `LLAMACPP_API_KEY`; `boot-3090.sh` strips `DSH_*` + cds to repo.
+- 2026-10-03 — plan written to `plan/`.
 
 ## Reminders
 
-- Acceptance on `:3090` only. Never touch `:3080` (dsh) or `:8080` (llama).
-  `:11434` / ollama was deliberately shut down 2026-10-03 — do **not** restart it.
-- `node build.mjs` must produce **both** `lib/index.js` and `lib/client.js`.
-- **A GitHub remote exists** (`origin`). Commit locally; **never push, never
-  force-push, never change the remote.** The human publishes.
-- Plugin never writes `ME.md` or project `MEMORY.md`. Inbox only.
-- No embeddings, no FTS, no LLM calls, no frontmatter schema. Ever.
+- Never touch `:3080` / `:8080` / `:11434`. Never spawn `dsh web` from agent.
+- Never push. No key talk. No `deepseek-harness` archaeology.
