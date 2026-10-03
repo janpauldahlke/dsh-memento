@@ -14,7 +14,7 @@
  * 251 chars, and the result is wrapped in `--…--`. Note the harness does NOT
  * lowercase — an uppercase cwd keeps its case on disk.
  */
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import RITUAL_TEMPLATE from '../../assets/ritual.md'
@@ -101,6 +101,8 @@ export interface VaultFileState {
   cap: number
   /** `lines > cap` (the file is still injected verbatim when present — caps are reports, not edits). */
   overCap: boolean
+  /** `stat.mtimeMs` when the file exists; omitted when absent/unreadable. */
+  mtimeMs?: number
 }
 
 /** Vault observation for one project key. */
@@ -161,16 +163,20 @@ export function bootstrapVault(dshHome: string, templateText: string): Bootstrap
 /** Read one vault file, degrading every failure to absent. */
 function readVaultFile(path: string, cap: number): VaultFileState {
   let text: string | undefined
+  let mtimeMs: number | undefined
   try {
     text = readFileSync(path, 'utf8')
+    mtimeMs = statSync(path).mtimeMs
   } catch {
     text = undefined // ENOENT and EACCES alike: absent/unreadable
+    mtimeMs = undefined
   }
   const lines = text === undefined ? 0 : countLines(text)
   return {
     path,
     exists: text !== undefined,
     ...text !== undefined ? { text } : {},
+    ...mtimeMs !== undefined ? { mtimeMs } : {},
     lines,
     cap,
     overCap: lines > cap,

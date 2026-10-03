@@ -1,34 +1,23 @@
 # STATUS — dsh-memento
-Updated: 2026-10-03T13:45+02:00 · Phase: **M0–M5 shipped · review fixes open**
+Updated: 2026-10-03T14:05+02:00 · Phase: **REVIEW-01 + compliance flush**
 LAW: plan is `plan/`. Rules are `PROTOCOL.md`. If chat contradicts this file,
 **this file wins**. Keep ≤45 lines; rewrite at every working block.
 ## Next 3
-Source: `plan/REVIEW-01.md` — read the item in full first. Items are
-independent; stopping after any one leaves a working build.
-1. **R1 — lost update.** Pane clobbers hand edits to `ME.md`: sticky draft +
-   precondition-free `PUT`. Adopt external changes when not dirty; add
-   `mtimeMs` + `409`. Extend `accept-m4.mjs` (3 new checks). **Data loss — first.**
-2. **R2 — no on/off.** Nothing can stop inject/capture/compliance. One master
-   switch via `~/.dsh/memory/.off`; no settings system. New `accept-m6.mjs`
-   (5 checks). **Human's stated priority.**
-3. **R4 — the pane explains nothing.** Two tooltips exist in the whole client.
-   Add section help, a collapsible "What is this?", and tooltips using the
-   **exact copy in REVIEW-01 §R4** — do not invent wording.
-Then: R3 (show injected text — trust), R5, R6, R7, R8. The "written
-judgement" task waits until the review items are closed.
+1. **Human glance** on `:3080` after restart (host is start-once).
+2. **Commit** when asked — local only, never push.
+3. **Smoke §3.6** re-check in UI: strip should leave 0/0 (history ≥1).
 ## Milestones
-- [x] M0 (`7d6dd36`) · [x] M1 (`9e1ad61`) · [x] M2+M3+M4 (`9fc1647`) ·
-  [x] M5 (`7fc2843`, v0.6.0) · [ ] REVIEW-01 (R1–R8)
+- [x] M0–M5 · [x] REVIEW-01 R1–R7 · [x] compliance live flush (was 0/0)
 ## Blockers
-- None. `:3090` runs v0.6.0 via `./agent/boot-3090.sh` (tracked process
-  `dsh-memento-3090`; kill+relaunch the same way if stale).
-## Done log
-- 2026-10-03 — **REVIEW-01 received**: correct build, ritual held, opaque to
-  anyone who has not read `DESIGN.md`.
-- 2026-10-03 — M5 9/9; M2/M3/M4 re-run green. 93/93 tests, tsc clean.
-  Compliance still **0/0** — no session has *ended* under an M3+ build.
+- None. `:3090` relaunch after this block for v0.6.1 host.
+## Done this block
+- **Compliance fix (M3 intent):** root listeners use `{ global: true }`;
+  tracker starts on `session/created`; idempotent flush on `session/disposed`
+  + fiber unload. Live headless → `.compliance.log` line + history 1/1.
+- Root cause: scoped session carriers filtered out untagged observers while
+  agent/pre-step inject still worked — scorecard never flushed.
+- REVIEW-01 R1–R7 still in tree (mtime/off/inject.text/pane help).
 ## Reminders
-- Run `plan/SMOKE.md` before claiming a review item is done.
-- Never touch `:3080` / `:8080` / `:11434`; kill only pids verified by number.
-- Plugin never writes `ME.md` / project `MEMORY.md` except via explicit pane action.
-- No settings system, no configurable caps, no new deps, no CSS pipeline.
+- No settings system, no configurable caps, no new deps.
+- Never write ME.md / project MEMORY.md except via explicit pane action.
+- Cap STATUS ≤45 lines.

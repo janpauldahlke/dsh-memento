@@ -35,10 +35,13 @@ export const FILE_ROUTE = '/api/dsh-memento/file'
 export const INBOX_DELETE_ROUTE = '/api/dsh-memento/inbox/line'
 
 /** Package version, mirrored from package.json by the host payloads. */
-export const VERSION = '0.6.0'
+export const VERSION = '0.6.1'
 
 /** Milestone the running build reports. */
 export const MILESTONE = 'M5'
+
+/** Host HTTP route: enable/disable via `~/.dsh/memory/.off` (REVIEW-01 R2). */
+export const ENABLED_ROUTE = '/api/dsh-memento/enabled'
 
 /** Agent tool name (M5): read-only session-log archaeology. */
 export const HISTORY_SEARCH_TOOL = 'memory_history_search'
@@ -79,6 +82,11 @@ export interface StateFilePayload {
    * editor is seeded from it). Absent when the file is missing/unreadable.
    */
   text?: string
+  /**
+   * `stat.mtimeMs` when the file exists (REVIEW-01 R1). The pane echoes this
+   * on `PUT /file`; a mismatch yields 409. Absent when the file is missing.
+   */
+  mtimeMs?: number
 }
 
 /** One inbox line as listed by the state payload (M4): 1-based number + verbatim text. */
@@ -92,10 +100,20 @@ export interface InboxLinePayload {
 /** `GET /api/dsh-memento/state` success payload. */
 export interface StatePayload {
   ok: true
+  /**
+   * Master switch (REVIEW-01 R2): `false` when `~/.dsh/memory/.off` is
+   * present. Inject, capture, and compliance tracking are all stopped.
+   */
+  enabled: boolean
   me: StateFilePayload
   project: {
     /** The project key the observation was derived from (`--slug--`). */
     key: string
+    /**
+     * Absolute cwd of the dsh web process (the project this observation is
+     * for). Shown in the pane; the opaque key stays in the tooltip.
+     */
+    cwd: string
     path: string
     lines: number
     cap: number
@@ -103,6 +121,8 @@ export interface StatePayload {
     exists: boolean
     /** Verbatim content when the file exists and is readable (M4). */
     text?: string
+    /** `stat.mtimeMs` when the file exists (REVIEW-01 R1). */
+    mtimeMs?: number
   }
   /** The inbox's tail for the Memory pane (M4): newest first, up to 20 lines. */
   inbox: {
@@ -122,6 +142,11 @@ export interface StatePayload {
     budget: number
     /** True when the project section would be dropped for the ceiling. */
     truncated: boolean
+    /**
+     * Verbatim inject block bytes (REVIEW-01 R3). Empty string when nothing
+     * would be sent (or when disabled).
+     */
+    text: string
   }
 }
 
@@ -145,9 +170,12 @@ export interface CaptureRequest {
 /** `POST /api/dsh-memento/capture` success payload. */
 export interface CapturePayload {
   ok: true
-  captured: true
+  /** `false` when the plugin is disabled (`~/.dsh/memory/.off` present). */
+  captured: boolean
   /** The exact line written to `inbox.md` (no trailing newline). */
-  line: string
+  line?: string
+  /** Present when `captured` is false. */
+  reason?: 'disabled'
 }
 
 /** `POST /api/dsh-memento/undo` payload (M2). */
@@ -170,6 +198,12 @@ export interface FileRequest {
    * server's launched process cwd (the same project `GET /state` observes).
    */
   key?: string
+  /**
+   * Optimistic-concurrency token (REVIEW-01 R1): the `mtimeMs` last seen via
+   * `GET /state`. When the file exists and this no longer matches, the host
+   * replies 409 and writes nothing. Omit to skip the check (create / legacy).
+   */
+  mtimeMs?: number
 }
 
 /** `PUT /api/dsh-memento/file` success payload (M4). */
@@ -184,6 +218,27 @@ export interface FilePayload {
   cap: number
   /** `lines > cap` (the write still succeeded). */
   overCap: boolean
+  /** `stat.mtimeMs` of the file after the write. */
+  mtimeMs: number
+}
+
+/** `PUT /api/dsh-memento/file` conflict payload (REVIEW-01 R1). */
+export interface FileConflictPayload {
+  ok: false
+  error: 'mtime mismatch'
+  /** Current `mtimeMs` on disk (so the client can reload or retry). */
+  mtimeMs: number
+}
+
+/** `POST /api/dsh-memento/enabled` request body (REVIEW-01 R2). */
+export interface EnabledRequest {
+  enabled: boolean
+}
+
+/** `POST /api/dsh-memento/enabled` success payload. */
+export interface EnabledPayload {
+  ok: true
+  enabled: boolean
 }
 
 /** `DELETE /api/dsh-memento/inbox/line/N` payload (M4). */

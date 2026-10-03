@@ -283,7 +283,12 @@ try {
     eq(injected.length, 1, 'exactly one dsh-memento user/message event')
     const text = (injected[0].data.content ?? []).filter(b => b.type === 'text').map(b => b.text).join('')
     assert(text.includes(SENTINEL), `injected text contains ${SENTINEL}`)
-    return `seq ${injected[0].seq}, ${text.length} chars`
+    // REVIEW-01 R3: the trust surface exposes the same bytes the session got.
+    return httpJson('/api/dsh-memento/state').then(({ status, json }) => {
+      eq(status, 200, 'state route 200 after inject')
+      eq(json?.inject?.text, text, 'state.inject.text byte-identical to session-log block')
+      return `seq ${injected[0].seq}, ${text.length} chars; inject.text matched`
+    })
   })
   await check('5', 'cache stability: single byte-identical block across ≥3 steps', () => {
     const events = turn1.events

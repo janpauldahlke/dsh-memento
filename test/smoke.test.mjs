@@ -34,6 +34,7 @@ test('bundle exports: name, inject seat, route constants', () => {
   assert.equal(mod.COMPLIANCE_ROUTE, '/api/dsh-memento/compliance')
   assert.equal(mod.FILE_ROUTE, '/api/dsh-memento/file')
   assert.equal(mod.INBOX_DELETE_ROUTE, '/api/dsh-memento/inbox/line')
+  assert.equal(mod.ENABLED_ROUTE, '/api/dsh-memento/enabled')
   assert.equal(typeof mod.apply, 'function')
 })
 
@@ -54,7 +55,7 @@ const ctx = {
   logger: noopLogger,
 }
 
-test('apply: registers 7 routes, 2 tools, 2 pre-step + 2 session listeners, no throw', () => {
+test('apply: registers 8 routes, 2 tools, 2 pre-step + 2 session listeners, no throw', () => {
   assert.doesNotThrow(() => mod.apply(ctx))
   assert.deepEqual(
     routes.map((r) => r.path),
@@ -66,6 +67,7 @@ test('apply: registers 7 routes, 2 tools, 2 pre-step + 2 session listeners, no t
       '/api/dsh-memento/compliance',
       '/api/dsh-memento/file',
       '/api/dsh-memento/inbox/line',
+      '/api/dsh-memento/enabled',
     ],
   )
   const lineDelete = routes.find((r) => r.path === '/api/dsh-memento/inbox/line')
@@ -82,9 +84,9 @@ test('apply: registers 7 routes, 2 tools, 2 pre-step + 2 session listeners, no t
   assert.deepEqual(toolDefs[1].output.schema.required, ['ok', 'scanned', 'hits', 'truncated', 'degraded'])
   assert.deepEqual(
     listeners.map((l) => l.event),
-    ['agent/pre-step', 'agent/pre-step', 'session/event', 'session/disposed'],
+    ['agent/pre-step', 'agent/pre-step', 'session/created', 'session/event', 'session/disposed'],
   )
-  assert.ok(effects.length >= 5, `expected at least 5 effects, got ${effects.length}`)
+  assert.ok(effects.length >= 6, `expected at least 6 effects, got ${effects.length}`)
 })
 
 // ----------------------------------------------------------- route driver ---
@@ -132,7 +134,7 @@ test('health route: 200 ok, milestone + version match the bundle exports', async
   assert.equal(status, 200)
   // Health must report exactly the milestone/version the bundle exports.
   assert.equal(mod.MILESTONE, 'M5')
-  assert.equal(mod.VERSION, '0.6.0')
+  assert.equal(mod.VERSION, '0.6.1')
   assert.deepEqual(json, { ok: true, plugin: 'dsh-memento', version: mod.VERSION, milestone: mod.MILESTONE })
   const wrong = await invoke('/api/dsh-memento/health', 'POST')
   assert.equal(wrong.status, 405)
@@ -142,13 +144,18 @@ test('state route: 200 ok, bootstrap seeded ME.md under the temp DSH_HOME, inbox
   const { status, json } = await invoke('/api/dsh-memento/state')
   assert.equal(status, 200)
   assert.equal(json.ok, true)
+  assert.equal(json.enabled, true)
   assert.equal(json.me.exists, true)
   assert.equal(json.me.cap, 30)
   assert.equal(json.me.lines, 8)
   assert.equal(typeof json.me.text, 'string', 'me.text is exposed for the pane editor (M4)')
+  assert.equal(typeof json.me.mtimeMs, 'number', 'me.mtimeMs for optimistic concurrency')
   assert.equal(json.inject.budget, 4000)
   assert.ok(json.inject.chars > 0)
+  assert.equal(typeof json.inject.text, 'string', 'inject.text is the trust surface (R3)')
+  assert.equal(json.inject.text.length, json.inject.chars)
   assert.ok(json.project.key.startsWith('--'), json.project.key)
+  assert.equal(typeof json.project.cwd, 'string')
   assert.equal(typeof json.inbox.path, 'string')
   assert.equal(json.inbox.exists, false, 'fresh home: no inbox yet')
   assert.equal(json.inbox.total, 0)

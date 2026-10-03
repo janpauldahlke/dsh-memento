@@ -104,6 +104,28 @@ await build({
   logLevel: 'warning',
 })
 
+// ---- editor reconcile + enable switch (ESM; acceptance / unit tests) --------
+await build({
+  entryPoints: [join(root, 'src/shared/reconcile.ts')],
+  outfile: join(root, 'lib/reconcile.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'es2024',
+  sourcemap: true,
+  logLevel: 'warning',
+})
+await build({
+  entryPoints: [join(root, 'src/host/enabled.ts')],
+  outfile: join(root, 'lib/enabled.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'es2024',
+  sourcemap: true,
+  logLevel: 'warning',
+})
+
 // ---- client half (CJS, browser ModuleLoader factory) ------------------------
 await build({
   entryPoints: [join(root, 'src/client/index.tsx')],

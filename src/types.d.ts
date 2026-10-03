@@ -43,7 +43,15 @@ declare module '@deepseek-ai/cordis' {
     }
     effect: (dispose: () => void, tag?: string) => void
     inject: (deps: string[], fn: (ctx: Context) => void) => void
-    on: (name: string, listener: (...args: any[]) => any) => () => void
+    /**
+     * Subscribe to a Cordis event. `options.global: true` receives the event
+     * regardless of scope-carrier filter checks (harness invariant pattern).
+     */
+    on: (
+      name: string,
+      listener: (...args: any[]) => any,
+      options?: boolean | { prepend?: boolean; global?: boolean },
+    ) => () => void
     logger?: (name: string) => Logger
     [key: string]: unknown
   }

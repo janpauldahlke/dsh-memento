@@ -35,6 +35,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { adoptFileText } from '../lib/reconcile.js'
 
 const BASE = 'http://127.0.0.1:3090'
 const PORT = 3090
@@ -233,21 +234,29 @@ try {
     // Clean slate for this probe key.
     rmSync(dirname(PROJECT_PATH), { recursive: true, force: true })
     assert(!existsSync(PROJECT_PATH), 'project file should be absent')
-    // Create with empty content (the pane's Create action does exactly this).
-    const created = await httpJson('/api/dsh-memento/file', { method: 'PUT', body: { target: 'project', key: PROJECT_KEY, content: '' } })
+    // Create with the commented header seed (REVIEW-01 R7 — pane Create).
+    const seed = readFileSync(join(REPO, 'assets/MEMORY.template.md'), 'utf8')
+    const created = await httpJson('/api/dsh-memento/file', { method: 'PUT', body: { target: 'project', key: PROJECT_KEY, content: seed } })
     assert(created.status === 200 && created.json?.ok === true, `create rejected (status ${created.status})`)
-    assert(existsSync(PROJECT_PATH) && statSync(PROJECT_PATH).size === 0, 'Create must create the missing file')
-    assert(created.json.lines === 0 && created.json.cap === 45 && created.json.overCap === false, 'create payload must report the project cap')
+    assert(existsSync(PROJECT_PATH) && readFileSync(PROJECT_PATH, 'utf8') === seed, 'Create must seed the commented header')
+    assert(created.json.cap === 45 && created.json.overCap === false, 'create payload must report the project cap')
+    assert(typeof created.json.mtimeMs === 'number', 'create payload must report mtimeMs')
     // Edit the created file (the pane's Save does exactly this):
     const content = 'curated line one\n'
-    const edit = await httpJson('/api/dsh-memento/file', { method: 'PUT', body: { target: 'project', key: PROJECT_KEY, content } })
+    const edit = await httpJson('/api/dsh-memento/file', {
+      method: 'PUT',
+      body: { target: 'project', key: PROJECT_KEY, content, mtimeMs: created.json.mtimeMs },
+    })
     assert(edit.status === 200 && edit.json?.ok === true, 'edit rejected')
     assert(readFileSync(PROJECT_PATH, 'utf8') === content, 'content must be exactly what was sent')
     // Re-PUTting the same content (a re-triggered save of the unchanged
     // draft) leaves the file byte-identical:
-    const again = await httpJson('/api/dsh-memento/file', { method: 'PUT', body: { target: 'project', key: PROJECT_KEY, content } })
+    const again = await httpJson('/api/dsh-memento/file', {
+      method: 'PUT',
+      body: { target: 'project', key: PROJECT_KEY, content, mtimeMs: edit.json.mtimeMs },
+    })
     assert(again.status === 200 && readFileSync(PROJECT_PATH, 'utf8') === content, 're-create must not overwrite existing content')
-    record(true, '5', 'Create makes the missing file; re-create never clobbers existing content')
+    record(true, '5', 'Create seeds the header; re-create never clobbers existing content')
   })()
 
   // --------------------------------------------- check 6 (client CJS bundle) --
@@ -421,6 +430,48 @@ try {
   // Check 5's probe key must not outlive the run.
   rmSync(dirname(PROJECT_PATH), { recursive: true, force: true })
   assert(!existsSync(PROJECT_PATH), 'probe project not cleaned up')
+
+  // ------------------------------- check 8 (REVIEW-01 R1: adopt + mtime) ----
+  await (async () => {
+    // (a) non-dirty section adopts an external change.
+    const adopted = adoptFileText('disk-v2\n', {
+      draft: 'disk-v1\n',
+      baseline: 'disk-v1\n',
+      conflict: false,
+    })
+    assert(adopted.draft === 'disk-v2\n' && adopted.baseline === 'disk-v2\n' && adopted.conflict === false,
+      'non-dirty editor must adopt external fileText')
+    const conflicted = adoptFileText('disk-v2\n', {
+      draft: 'draft-edit\n',
+      baseline: 'disk-v1\n',
+      conflict: false,
+    })
+    assert(conflicted.draft === 'draft-edit\n' && conflicted.conflict === true,
+      'dirty editor must keep draft and surface conflict when disk changes')
+
+    // (b) stale mtimeMs → 409, file byte-unchanged.
+    const { json: state } = await httpJson('/api/dsh-memento/state')
+    assert(state?.ok === true && typeof state.me?.mtimeMs === 'number', 'state must expose me.mtimeMs')
+    const before = readFileSync(ME_PATH)
+    const beforeSha = sha256(before)
+    const stale = await httpJson('/api/dsh-memento/file', {
+      method: 'PUT',
+      body: { target: 'me', content: 'stale overwrite\n', mtimeMs: state.me.mtimeMs - 1 },
+    })
+    assert(stale.status === 409 && stale.json?.ok === false, `expected 409 for stale mtime (got ${stale.status})`)
+    assert(sha256Buf(ME_PATH) === beforeSha, 'stale PUT must leave the file byte-unchanged')
+
+    // (c) current mtimeMs → success.
+    const next = `m4 mtime ok ${Date.now()}\n`
+    const fresh = await httpJson('/api/dsh-memento/file', {
+      method: 'PUT',
+      body: { target: 'me', content: next, mtimeMs: state.me.mtimeMs },
+    })
+    assert(fresh.status === 200 && fresh.json?.ok === true, `current mtime PUT failed (status ${fresh.status})`)
+    assert(readFileSync(ME_PATH, 'utf8') === next, 'current mtime PUT must write the new bytes')
+    assert(typeof fresh.json.mtimeMs === 'number', 'success payload must report mtimeMs')
+    record(true, '8', 'adoptFileText + stale mtime 409 + current mtime 200')
+  })()
 
   // ---------------------------------------------------- restore ME.md --------
   if (meBefore !== null) {

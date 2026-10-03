@@ -36,7 +36,7 @@
  * apply must never throw: every registration degrades to a logged error.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { cwd as processCwd } from 'node:process'
 import type { Context } from '@deepseek-ai/cordis'
@@ -47,6 +47,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import {
   CAPTURE_ROUTE,
   COMPLIANCE_ROUTE,
+  ENABLED_ROUTE,
   FILE_ROUTE,
   HEALTH_ROUTE,
   INBOX_DELETE_ROUTE,
@@ -59,6 +60,8 @@ import {
   type CaptureRequest,
   type CompliancePayload,
   type ComplianceViolationPayload,
+  type EnabledPayload,
+  type FileConflictPayload,
   type FilePayload,
   type FileRequest,
   type HealthPayload,
@@ -86,10 +89,12 @@ import {
   SessionComplianceTracker,
   type ComplianceSnapshot,
 } from './compliance.ts'
+import { isEnabled, setEnabled } from './enabled.ts'
 import { writeFileAtomic } from './fsutil.ts'
 import { createMementoUserMessage, installSessionStartInject, type PrepareInject } from './inject.ts'
 import { registerTools } from './tools.ts'
 import ME_TEMPLATE from '../../assets/ME.template.md'
+import MEMORY_TEMPLATE from '../../assets/MEMORY.template.md'
 
 export const name = PLUGIN
 export const inject: string[] = ['tools']
@@ -97,6 +102,7 @@ export const inject: string[] = ['tools']
 export {
   CAPTURE_ROUTE,
   COMPLIANCE_ROUTE,
+  ENABLED_ROUTE,
   FILE_ROUTE,
   HEALTH_ROUTE,
   INBOX_DELETE_ROUTE,
@@ -105,6 +111,9 @@ export {
   UNDO_ROUTE,
   VERSION,
 } from '../shared/types.ts'
+
+/** Seeded header written by the pane's Create action (REVIEW-01 R7). */
+export const PROJECT_CREATE_SEED = MEMORY_TEMPLATE
 
 const DSH_HOME = resolveDshHome()
 
@@ -167,12 +176,17 @@ function registerStateRoute(ctx: Context, inbox: InboxStore): void {
           }
           // Server-global route: the observed project is the one this dsh web
           // process was launched in. Per-session keys are used by the inject.
-          const key = projectKey(processCwd())
+          const cwd = processCwd()
+          const key = projectKey(cwd)
+          const enabled = isEnabled(DSH_HOME)
           const state = readVault(DSH_HOME, key)
+          // Always expose the crafted block (trust surface). `enabled` says
+          // whether a new session would actually receive it.
           const block = buildInjectBlockWithRitual(state, DSH_HOME)
           const inboxTail = readInboxTail(inbox.path, INBOX_TAIL_LINES)
           const payload: StatePayload = {
             ok: true,
+            enabled,
             me: {
               path: state.me.path,
               lines: state.me.lines,
@@ -180,15 +194,18 @@ function registerStateRoute(ctx: Context, inbox: InboxStore): void {
               overCap: state.me.overCap,
               exists: state.me.exists,
               ...(state.me.text !== undefined ? { text: state.me.text } : {}),
+              ...(state.me.mtimeMs !== undefined ? { mtimeMs: state.me.mtimeMs } : {}),
             },
             project: {
               key,
+              cwd,
               path: state.project.path,
               lines: state.project.lines,
               cap: state.project.cap,
               overCap: state.project.overCap,
               exists: state.project.exists,
               ...(state.project.text !== undefined ? { text: state.project.text } : {}),
+              ...(state.project.mtimeMs !== undefined ? { mtimeMs: state.project.mtimeMs } : {}),
             },
             // M4: the pane's read-only inbox listing (newest 20, 1-based
             // line numbers the line-delete route understands). Fail-open:
@@ -203,6 +220,7 @@ function registerStateRoute(ctx: Context, inbox: InboxStore): void {
               chars: block.chars,
               budget: INJECT_BUDGET,
               truncated: block.truncated,
+              text: block.block,
             },
           }
           send(res, 200, payload)
@@ -265,6 +283,11 @@ function registerCaptureRoute(ctx: Context, inbox: InboxStore): void {
             send(res, 400, { ok: false, error: parsed.error })
             return
           }
+          if (!isEnabled(DSH_HOME)) {
+            const disabled: CapturePayload = { ok: true, captured: false, reason: 'disabled' }
+            send(res, 200, disabled)
+            return
+          }
           // Default key: the project this dsh web process was launched in —
           // the same project `GET /state` observes.
           const key = parsed.key ?? projectKey(processCwd())
@@ -320,7 +343,7 @@ function parseFileBody(raw: string): FileRequest | { error: string } {
     return { error: 'expected a JSON body { "target": …, "content": … }' }
   }
   if (parsed === null || typeof parsed !== 'object') return { error: 'expected a JSON object' }
-  const { target, content, key } = parsed as Record<string, unknown>
+  const { target, content, key, mtimeMs } = parsed as Record<string, unknown>
   if (target !== 'me' && target !== 'project') {
     return { error: 'target must be "me" or "project"' }
   }
@@ -331,6 +354,12 @@ function parseFileBody(raw: string): FileRequest | { error: string } {
   if (key !== undefined) {
     if (typeof key !== 'string' || key.length === 0) return { error: 'key must be a non-empty string' }
     request.key = key
+  }
+  if (mtimeMs !== undefined) {
+    if (typeof mtimeMs !== 'number' || !Number.isFinite(mtimeMs)) {
+      return { error: 'mtimeMs must be a finite number' }
+    }
+    request.mtimeMs = mtimeMs
   }
   return request
 }
@@ -369,9 +398,30 @@ function registerFileRoute(ctx: Context): void {
             send(res, 400, { ok: false, error: 'target resolves outside the memory vault' })
             return
           }
+          // Optimistic concurrency (REVIEW-01 R1): when the client echoes an
+          // mtimeMs and the file exists, refuse a stale overwrite with 409.
+          if (parsed.mtimeMs !== undefined && existsSync(resolved)) {
+            let currentMtime: number
+            try {
+              currentMtime = statSync(resolved).mtimeMs
+            } catch (error) {
+              send(res, 500, { ok: false, error: errorMessage(error) })
+              return
+            }
+            if (currentMtime !== parsed.mtimeMs) {
+              const conflict: FileConflictPayload = {
+                ok: false,
+                error: 'mtime mismatch',
+                mtimeMs: currentMtime,
+              }
+              send(res, 409, conflict)
+              return
+            }
+          }
           writeFileAtomic(resolved, parsed.content)
           const lines = countLines(parsed.content)
           const cap = parsed.target === 'me' ? ME_CAP : PROJECT_CAP
+          const mtimeMs = statSync(resolved).mtimeMs
           const payload: FilePayload = {
             ok: true,
             target: parsed.target,
@@ -379,6 +429,7 @@ function registerFileRoute(ctx: Context): void {
             lines,
             cap,
             overCap: lines > cap,
+            mtimeMs,
           }
           send(res, 200, payload)
         } catch (error) {
@@ -444,6 +495,7 @@ function installTriggerCapture(ctx: Context, inbox: InboxStore): void {
   ): Promise<PreStepDecision> => {
     const decision = await next()
     try {
+      if (!isEnabled(DSH_HOME)) return decision
       // Only the newly claimed batch is scanned — admitted history already
       // passed (or never matched) and our own injected block is attributed.
       for (const message of args.messages) {
@@ -481,6 +533,7 @@ function bootstrap(ctx: Context): void {
 
 /** Build the block + attributed UserMessage for one project key, or undefined. */
 function prepareInject(key: string): { message: UserMessage; block: import('./vault.ts').InjectBlock } | undefined {
+  if (!isEnabled(DSH_HOME)) return undefined
   const state = readVault(DSH_HOME, key)
   const block = buildInjectBlockWithRitual(state, DSH_HOME)
   if (block.block.length === 0) return undefined
@@ -571,7 +624,10 @@ function installCompliance(ctx: Context, state: ComplianceState): void {
       // Logging must not throw either.
     }
   }
-  const entryFor = (session: Session): TrackedSession | null => {
+  /** Sessions already flushed to `.compliance.log` (dispose + fiber teardown dedupe). */
+  const flushed = new Set<string>()
+
+  const entryFor = (session: Session): TrackedSession => {
     const sessionId = String(session.header.id)
     let entry = state.trackers.get(sessionId)
     if (entry === undefined) {
@@ -589,13 +645,55 @@ function installCompliance(ctx: Context, state: ComplianceState): void {
     }
     return entry
   }
+
+  /** Append one JSON line for an ended session (M3). Idempotent per sessionId. */
+  const flushEntry = (entry: TrackedSession): void => {
+    if (flushed.has(entry.sessionId)) return
+    flushed.add(entry.sessionId)
+    state.trackers.delete(entry.sessionId)
+    if (!isEnabled(DSH_HOME)) return
+    const snapshot = entry.tracker.snapshot()
+    const iso = (ms: number | null): string | null => (ms === null ? null : isoLocal(new Date(ms)))
+    appendComplianceLog(logPath, {
+      endedAt: isoLocal(new Date()),
+      sessionId: entry.sessionId,
+      projectKey: snapshot.projectKey,
+      ritualRequired: snapshot.ritualRequired,
+      memoryReadAt: iso(snapshot.memoryReadAt),
+      firstMutationAt: iso(snapshot.firstMutationAt),
+      compliant: snapshot.compliant,
+      violations: snapshot.violations.map((v) => ({
+        kind: v.kind,
+        at: isoLocal(new Date(v.at)),
+        tool: v.tool,
+      })),
+    })
+  }
+
+  // `{ global: true }` matches harness invariant plugins: scoped session
+  // carriers must not filter out this root plugin's observers. Without it,
+  // live tool/call + dispose edges can miss the listener while inject (an
+  // agent-scoped waterfall) still works — the 0/0 scorecard failure mode.
+  const sessionOpts = { global: true as const }
+
+  // Start the tracker at session birth so ritualRequired is fixed at the
+  // true start (M3) and a tool-less session still gets a log line on end.
+  ctx.on('session/created', (session: unknown): void => {
+    try {
+      if (!isEnabled(DSH_HOME)) return
+      entryFor(session as Session)
+    } catch (error) {
+      warn('compliance session/created failed (session unaffected)', error)
+    }
+  }, sessionOpts)
+
   ctx.on('session/event', (session: unknown, event: unknown): void => {
     if (event === null || typeof event !== 'object') return
     if ((event as { type?: unknown }).type !== 'tool/call') return
     const sess = session as Session
     try {
+      if (!isEnabled(DSH_HOME)) return
       const entry = entryFor(sess)
-      if (entry === null) return
       const data = (event as { data?: { name?: unknown; arguments?: unknown } }).data
       const name = data?.name
       if (typeof name !== 'string') return
@@ -613,33 +711,34 @@ function installCompliance(ctx: Context, state: ComplianceState): void {
     } catch (error) {
       warn('compliance observation failed (session unaffected)', error)
     }
-  })
+  }, sessionOpts)
+
   ctx.on('session/disposed', (session: unknown): void => {
     try {
       const sessionId = String((session as Session).header.id)
       const entry = state.trackers.get(sessionId)
       if (entry === undefined) return
-      state.trackers.delete(sessionId)
-      const snapshot = entry.tracker.snapshot()
-      const iso = (ms: number | null): string | null => (ms === null ? null : isoLocal(new Date(ms)))
-      appendComplianceLog(logPath, {
-        endedAt: isoLocal(new Date()),
-        sessionId,
-        projectKey: snapshot.projectKey,
-        ritualRequired: snapshot.ritualRequired,
-        memoryReadAt: iso(snapshot.memoryReadAt),
-        firstMutationAt: iso(snapshot.firstMutationAt),
-        compliant: snapshot.compliant,
-        violations: snapshot.violations.map((v) => ({
-          kind: v.kind,
-          at: isoLocal(new Date(v.at)),
-          tool: v.tool,
-        })),
-      })
+      flushEntry(entry)
     } catch (error) {
       warn('compliance log write failed', error)
     }
-  })
+  }, sessionOpts)
+
+  // Headless ends via appExit → fiber dispose; if session/disposed races the
+  // exit, flush every still-open tracker so the scorecard still advances.
+  ctx.effect(() => () => {
+    try {
+      for (const entry of [...state.trackers.values()]) {
+        try {
+          flushEntry(entry)
+        } catch (error) {
+          warn('compliance fiber-flush failed', error)
+        }
+      }
+    } catch (error) {
+      warn('compliance fiber teardown failed', error)
+    }
+  }, 'memento: compliance flush on unload')
 }
 
 /** `GET /api/dsh-memento/compliance` — point-in-time report (M3). */
@@ -691,6 +790,47 @@ function registerComplianceRoute(ctx: Context, state: ComplianceState): void {
   ctx.effect(() => unregister, 'memento: compliance route')
 }
 
+
+/** `POST /api/dsh-memento/enabled` — create/remove `~/.dsh/memory/.off`. */
+function registerEnabledRoute(ctx: Context): void {
+  const unregister = ctx.webServer.register({
+    kind: 'exact',
+    path: ENABLED_ROUTE,
+    handler: (req: IncomingMessage, res: ServerResponse) => {
+      void (async () => {
+        try {
+          if (req.method !== 'POST') {
+            send(res, 405, { ok: false, error: 'method not allowed; use POST' })
+            return
+          }
+          const raw = await readBody(req)
+          let parsed: unknown
+          try {
+            parsed = JSON.parse(raw)
+          } catch {
+            send(res, 400, { ok: false, error: 'expected JSON { "enabled": boolean }' })
+            return
+          }
+          if (
+            parsed === null ||
+            typeof parsed !== 'object' ||
+            typeof (parsed as { enabled?: unknown }).enabled !== 'boolean'
+          ) {
+            send(res, 400, { ok: false, error: 'expected JSON { "enabled": boolean }' })
+            return
+          }
+          setEnabled(DSH_HOME, (parsed as { enabled: boolean }).enabled)
+          const payload: EnabledPayload = { ok: true, enabled: isEnabled(DSH_HOME) }
+          send(res, 200, payload)
+        } catch (error) {
+          send(res, 500, { ok: false, error: errorMessage(error) })
+        }
+      })()
+    },
+  })
+  ctx.effect(() => unregister, 'memento: enabled route')
+}
+
 export function apply(ctx: Context): void {
   // Vault bootstrap runs in every profile (web or headless) — the memory
   // block is useful wherever a session starts.
@@ -709,7 +849,7 @@ export function apply(ctx: Context): void {
   }
   // memory_remember: the model-facing escape hatch (inbox only).
   try {
-    const disposeTools = registerTools(ctx, inbox)
+    const disposeTools = registerTools(ctx, inbox, () => isEnabled(DSH_HOME))
     ctx.effect(() => { disposeTools() }, 'memento: tools')
   } catch (error) {
     ctx.logger?.('dsh-memento')
@@ -735,6 +875,7 @@ export function apply(ctx: Context): void {
       registerComplianceRoute(webCtx, compliance)
       registerFileRoute(webCtx)
       registerInboxDeleteRoute(webCtx, inbox)
+      registerEnabledRoute(webCtx)
     } catch (error) {
       webCtx.logger?.('dsh-memento')
         .error('route registration failed: %s', errorMessage(error))

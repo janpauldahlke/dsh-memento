@@ -36,7 +36,12 @@ interface ToolsFace {
  * logged no-op when the `tools` seat is unavailable (e.g. a profile without
  * agents).
  */
-export function registerTools(ctx: Context, inbox: InboxStore): () => void {
+export function registerTools(
+  ctx: Context,
+  inbox: InboxStore,
+  /** Live master-switch probe (REVIEW-01 R2); defaults to always-on. */
+  enabled: () => boolean = () => true,
+): () => void {
   const tools = (ctx as unknown as { tools?: ToolsFace }).tools
   if (typeof tools?.register !== 'function') {
     ctx.logger?.('dsh-memento')?.warn('tools service unavailable; tools not registered')
@@ -44,7 +49,7 @@ export function registerTools(ctx: Context, inbox: InboxStore): () => void {
   }
 
   const disposers: Array<() => void> = []
-  disposers.push(registerRememberTool(tools, ctx, inbox))
+  disposers.push(registerRememberTool(tools, ctx, inbox, enabled))
   disposers.push(registerHistorySearchTool(tools, ctx))
   return () => {
     for (const dispose of disposers) dispose()
@@ -56,6 +61,7 @@ function registerRememberTool(
   tools: ToolsFace,
   ctx: Context,
   inbox: InboxStore,
+  enabled: () => boolean,
 ): () => void {
   const dispose = tools.register({
     name: 'memory_remember',
@@ -93,6 +99,9 @@ function registerRememberTool(
       const text = typeof args?.text === 'string' ? args.text.trim() : ''
       if (text.length === 0) {
         throw new Error('memory_remember requires a non-empty "text" argument')
+      }
+      if (!enabled()) {
+        return { ok: true as const, captured: false as const, reason: 'disabled' as const }
       }
       const cwd = exec?.agent?.session?.header?.cwd
       const key = typeof cwd === 'string' && cwd.length > 0 ? projectKey(cwd) : projectKey(processCwd())

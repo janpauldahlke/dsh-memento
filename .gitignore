@@ -21,3 +21,8 @@ dist/
 .env
 .env.*
 *.key
+
+# builder stuff
+skills/**
+plan/**
+archive/**
