@@ -18,7 +18,7 @@ LAW: plan is `plan/`. Rules are `PROTOCOL.md`. If chat contradicts this file,
 ## Milestones
 
 - [x] M0 (`7d6dd36`) · [x] M1 (`9e1ad61`) · [x] M2+M3+M4 (`9fc1647`) ·
-  [x] M5 history search (v0.6.0, this commit)
+  [x] M5 history search (`7fc2843`, v0.6.0)
 
 ## Blockers
 
