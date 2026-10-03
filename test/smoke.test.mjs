@@ -54,7 +54,7 @@ const ctx = {
   logger: noopLogger,
 }
 
-test('apply: registers 7 routes, 1 tool, 2 pre-step + 2 session listeners, no throw', () => {
+test('apply: registers 7 routes, 2 tools, 2 pre-step + 2 session listeners, no throw', () => {
   assert.doesNotThrow(() => mod.apply(ctx))
   assert.deepEqual(
     routes.map((r) => r.path),
@@ -70,11 +70,16 @@ test('apply: registers 7 routes, 1 tool, 2 pre-step + 2 session listeners, no th
   )
   const lineDelete = routes.find((r) => r.path === '/api/dsh-memento/inbox/line')
   assert.equal(lineDelete.kind, 'prefix', 'line delete is a prefix route (line number in URL)')
-  assert.equal(toolDefs.length, 1)
+  assert.equal(toolDefs.length, 2)
   assert.equal(toolDefs[0].name, 'memory_remember')
   assert.deepEqual(toolDefs[0].parameters.required, ['text'])
   assert.equal(toolDefs[0].parameters.properties.text.type, 'string')
   assert.deepEqual(toolDefs[0].output.schema.required, ['ok', 'captured'])
+  assert.equal(toolDefs[1].name, 'memory_history_search')
+  assert.deepEqual(toolDefs[1].parameters.required, ['query'])
+  assert.equal(toolDefs[1].parameters.properties.query.type, 'string')
+  assert.equal(toolDefs[1].parameters.properties.allProjects.type, 'boolean')
+  assert.deepEqual(toolDefs[1].output.schema.required, ['ok', 'scanned', 'hits', 'truncated', 'degraded'])
   assert.deepEqual(
     listeners.map((l) => l.event),
     ['agent/pre-step', 'agent/pre-step', 'session/event', 'session/disposed'],
@@ -122,10 +127,13 @@ async function invoke(path, method = 'GET', body) {
 
 const ENTRY = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2} \[--[A-Za-z0-9._-]+--\] \S[\s\S]*$/
 
-test('health route: 200 ok, milestone M4', async () => {
+test('health route: 200 ok, milestone + version match the bundle exports', async () => {
   const { status, json } = await invoke('/api/dsh-memento/health')
   assert.equal(status, 200)
-  assert.deepEqual(json, { ok: true, plugin: 'dsh-memento', version: json.version, milestone: 'M4' })
+  // Health must report exactly the milestone/version the bundle exports.
+  assert.equal(mod.MILESTONE, 'M5')
+  assert.equal(mod.VERSION, '0.6.0')
+  assert.deepEqual(json, { ok: true, plugin: 'dsh-memento', version: mod.VERSION, milestone: mod.MILESTONE })
   const wrong = await invoke('/api/dsh-memento/health', 'POST')
   assert.equal(wrong.status, 405)
 })
@@ -192,6 +200,20 @@ test('memory_remember tool: session cwd key, empty text rejects', async () => {
   // Cleanup so the next run starts fresh.
   const undo = await invoke('/api/dsh-memento/undo', 'POST')
   assert.equal(undo.json.undone, true)
+})
+
+test('memory_history_search tool: fail-open result, empty query rejects', async () => {
+  const tool = toolDefs[1]
+  // The mock DSH_HOME has no sessions tree, so a search must fail-open:
+  // ok:true, zero hits, a degraded entry naming the missing root.
+  const result = await tool.execute({ query: 'anything' }, { agent: { session: { header: { cwd: '/tmp/smoke-proj' } } } })
+  assert.equal(result.ok, true)
+  assert.equal(result.scanned, 0)
+  assert.deepEqual(result.hits, [])
+  assert.equal(result.truncated, false)
+  assert.ok(result.degraded.length >= 1, 'a missing sessions root must be reported degraded')
+  await assert.rejects(tool.execute({ query: '   ' }, { agent: {} }), /non-empty/)
+  await assert.rejects(tool.execute({}, {}), /non-empty/)
 })
 
 // ---------------------------------------------------- trigger pre-step -----

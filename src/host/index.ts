@@ -94,7 +94,17 @@ import ME_TEMPLATE from '../../assets/ME.template.md'
 export const name = PLUGIN
 export const inject: string[] = ['tools']
 
-export { CAPTURE_ROUTE, COMPLIANCE_ROUTE, FILE_ROUTE, HEALTH_ROUTE, INBOX_DELETE_ROUTE, STATE_ROUTE, UNDO_ROUTE } from '../shared/types.ts'
+export {
+  CAPTURE_ROUTE,
+  COMPLIANCE_ROUTE,
+  FILE_ROUTE,
+  HEALTH_ROUTE,
+  INBOX_DELETE_ROUTE,
+  MILESTONE,
+  STATE_ROUTE,
+  UNDO_ROUTE,
+  VERSION,
+} from '../shared/types.ts'
 
 const DSH_HOME = resolveDshHome()
 

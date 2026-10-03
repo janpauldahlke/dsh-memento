@@ -90,6 +90,20 @@ await build({
   logLevel: 'warning',
 })
 
+// ---- history core (ESM, node-only; imported by the unit tests) --------------
+// Same standalone treatment: `node --test` exercises the bounded zstd scanner
+// without harness package resolution.
+await build({
+  entryPoints: [join(root, 'src/host/history.ts')],
+  outfile: join(root, 'lib/history.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'es2024',
+  sourcemap: true,
+  logLevel: 'warning',
+})
+
 // ---- client half (CJS, browser ModuleLoader factory) ------------------------
 await build({
   entryPoints: [join(root, 'src/client/index.tsx')],
