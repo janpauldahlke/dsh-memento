@@ -1,35 +1,22 @@
 /**
- * Browser half of dsh-memento (M0 skeleton).
+ * Browser half of dsh-memento (M4: the Memory pane).
  *
- * Registers one rightbar tab type: "Memory" (empty body) + a guide entry so
- * the tab is reachable from the right sidebar's guide page. No data, no
- * fetches, no stores — M0 exists to prove the client half loads.
+ * Registers the "Memory" rightbar tab type (top level, not inside a React
+ * effect — a missing top-level registration can stall boot), the keyed pane
+ * body under `sidebar.right.pane.tab`, and the keyed chip title under
+ * `sidebar.right.pane.tab.title` (icon + label + over-cap tint).
  *
- * Registration happens at apply top level (not inside a React effect), per the
- * gpu-monitor rightbar lesson: a missing top-level registration can stall boot.
+ * The pane's data lives in a module-level store (store.ts) polled by
+ * useMemory.ts; the components themselves hold no module state, so the
+ * bundle is load-once, dispose-clean, and the only runtime imports are the
+ * platform baseline (react + jsx-runtime).
  */
-import type { ComponentType } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { TAB_ID, TAB_KIND, TAB_TITLE } from '../shared/types.ts'
-
-/** M0 body: an empty pane. M4 replaces it with the Memory pane. */
-const MemoryBody: ComponentType = () => (
-  <div
-    style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100%',
-      padding: 24,
-      color: 'var(--dsh-color-text-muted, #888)',
-      fontSize: 13,
-    }}
-  >
-    {TAB_TITLE} — no content yet (M0)
-  </div>
-)
+import { MemoryBody } from './MemoryBody.tsx'
+import { MemoryTitle } from './MemoryTitle.tsx'
 
 export const name = 'dsh-memento'
 export const inject = ['slots', 'sidebarRightTabs']
@@ -43,7 +30,7 @@ export function apply(ctx: Context): void {
       id: 'memento',
       order: 270,
       title: () => TAB_TITLE,
-      description: () => 'Bounded-file memory: ME.md, project MEMORY.md, inbox (stub)',
+      description: () => 'Bounded-file memory: ME.md, project MEMORY.md, inbox — edit, delete, see cap pressure',
     }],
   }
   const disposeType = ctx.sidebarRightTabs.register(definition)
@@ -51,7 +38,12 @@ export function apply(ctx: Context): void {
     { name: 'sidebar.right.pane.tab', key: TAB_ID },
     MemoryBody,
   ))
+  const disposeTitle = ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register(
+    { name: 'sidebar.right.pane.tab.title', key: TAB_ID },
+    MemoryTitle,
+  ))
   ctx.effect(() => () => {
+    disposeTitle()
     disposeBody()
     disposeType()
   }, 'memento: rightbar tab type')

@@ -17,6 +17,7 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import RITUAL_TEMPLATE from '../../assets/ritual.md'
 
 /** Environment variable overriding the harness home (harness convention). */
 export const DSH_HOME_ENV = 'DSH_HOME'
@@ -200,6 +201,19 @@ export interface InjectBlock {
 }
 
 /**
+ * M3 ritual directive, or `undefined` when it must be omitted (no project
+ * `MEMORY.md` — you are never told to read a missing file, and no key means
+ * no project at all). The `<project-file>` placeholder is replaced with the
+ * absolute vault path so the directive is always correct under a custom
+ * `$DSH_HOME`.
+ */
+export function ritualDirective(state: VaultState, dshHome: string): string | undefined {
+  if (!state.project.exists || state.key.length === 0) return undefined
+  const target = vaultPaths(dshHome, state.key).project
+  return RITUAL_TEMPLATE.replace('<project-file>', () => target).trimEnd()
+}
+
+/**
  * Build the session-start block: ME.md verbatim, then project MEMORY.md
  * verbatim when it exists. Over the ceiling: ME.md only (never a mid-file
  * cut); an over-cap ME.md is still delivered whole — caps are reports, not
@@ -218,4 +232,21 @@ export function buildInjectBlock(state: VaultState): InjectBlock {
     return { block: full, chars: full.length, truncated: false }
   }
   return { block: meText, chars: meText.length, truncated: true }
+}
+
+/**
+ * M3: the session-start block with the ritual directive appended when a
+ * project `MEMORY.md` exists. Pure function of the vault state (like
+ * `buildInjectBlock`), so it stays byte-identical across steps and sessions
+ * of the same project — the directive never breaks cache stability.
+ */
+export function buildInjectBlockWithRitual(state: VaultState, dshHome: string): InjectBlock {
+  const base = buildInjectBlock(state)
+  if (base.block.length === 0) return base
+  const directive = ritualDirective(state, dshHome)
+  if (directive === undefined) return base
+  const block = base.block.endsWith('\n')
+    ? `${base.block}\n${directive}`
+    : `${base.block}\n\n${directive}`
+  return { block, chars: block.length, truncated: base.truncated }
 }

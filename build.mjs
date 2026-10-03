@@ -49,9 +49,39 @@ await build({
 // ---- vault core (ESM, node-only; imported by the unit tests) ---------------
 // Built standalone so `node --test` runs the key-derivation/cap logic without
 // resolving the harness `@deepseek-ai/*` packages (external to this package).
+// The `.md` loader inlines assets/ritual.md (M3) as a string literal.
 await build({
   entryPoints: [join(root, 'src/host/vault.ts')],
   outfile: join(root, 'lib/vault.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'es2024',
+  sourcemap: true,
+  loader: { '.md': 'text' },
+  logLevel: 'warning',
+})
+
+// ---- inbox core (ESM, node-only; imported by the unit tests) ----------------
+// Same standalone treatment as vault.ts: `node --test` exercises the
+// append/undo/trigger logic without harness package resolution.
+await build({
+  entryPoints: [join(root, 'src/host/inbox.ts')],
+  outfile: join(root, 'lib/inbox.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'es2024',
+  sourcemap: true,
+  logLevel: 'warning',
+})
+
+// ---- compliance core (ESM, node-only; imported by the unit tests) ----------
+// Same standalone treatment: `node --test` exercises the state machine and
+// classifier without harness package resolution.
+await build({
+  entryPoints: [join(root, 'src/host/compliance.ts')],
+  outfile: join(root, 'lib/compliance.js'),
   bundle: true,
   format: 'esm',
   platform: 'node',
