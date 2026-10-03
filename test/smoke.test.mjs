@@ -134,7 +134,7 @@ test('health route: 200 ok, milestone + version match the bundle exports', async
   assert.equal(status, 200)
   // Health must report exactly the milestone/version the bundle exports.
   assert.equal(mod.MILESTONE, 'M5')
-  assert.equal(mod.VERSION, '0.6.2')
+  assert.equal(mod.VERSION, '1.0.0')
   assert.deepEqual(json, { ok: true, plugin: 'dsh-memento', version: mod.VERSION, milestone: mod.MILESTONE })
   const wrong = await invoke('/api/dsh-memento/health', 'POST')
   assert.equal(wrong.status, 405)

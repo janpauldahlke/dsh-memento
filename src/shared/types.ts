@@ -35,7 +35,7 @@ export const FILE_ROUTE = '/api/dsh-memento/file'
 export const INBOX_DELETE_ROUTE = '/api/dsh-memento/inbox/line'
 
 /** Package version, mirrored from package.json by the host payloads. */
-export const VERSION = '0.6.2'
+export const VERSION = '1.0.0'
 
 /** Milestone the running build reports. */
 export const MILESTONE = 'M5'
