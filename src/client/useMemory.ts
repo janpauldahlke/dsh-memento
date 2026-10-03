@@ -8,9 +8,13 @@
  * the last subscriber unmounts (no timer leaks on pane close or unload).
  * Fetch failures never throw out — they land in the snapshot's `error` field
  * and the pane keeps showing the last good data.
+ *
+ * Project observation follows the open session workspace when the body/title
+ * pass `{ cwd, sessionId }` (same seat props as agent-processes). Nested
+ * callers that omit opts leave the focus alone.
  */
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
-import type { CompliancePayload, StatePayload } from '../shared/types.ts'
+import type { CompliancePayload, FileRequest, StatePayload } from '../shared/types.ts'
 import { memoryStore, type MemorySnapshot } from './store.ts'
 
 /** Same-origin API base (the routes live on this dsh web server). */
@@ -38,10 +42,24 @@ async function fetchJson(url: string, init?: RequestInit): Promise<FetchOutcome>
   return { status: response.status, body }
 }
 
+/** Focus set by MemoryBody / MemoryTitle from session seat props. */
+let focusCwd: string | null = null
+let focusSessionId: string | null = null
+
+function stateUrl(): string {
+  if (focusCwd === null) return `${API_BASE}/state`
+  return `${API_BASE}/state?cwd=${encodeURIComponent(focusCwd)}`
+}
+
+function complianceUrl(): string {
+  if (focusSessionId === null) return `${API_BASE}/compliance`
+  return `${API_BASE}/compliance?sessionId=${encodeURIComponent(focusSessionId)}`
+}
+
 /** One `GET /state` poll; writes the result into the store. Never throws. */
 async function pollState(): Promise<void> {
   try {
-    const { status, body } = await fetchJson(`${API_BASE}/state`)
+    const { status, body } = await fetchJson(stateUrl())
     const payload = body as Partial<StatePayload> | null
     if (status === 200 && payload !== null && payload.ok === true) {
       memoryStore.onState(payload as StatePayload, null)
@@ -56,7 +74,7 @@ async function pollState(): Promise<void> {
 /** One `GET /compliance` poll; writes the result into the store. Never throws. */
 async function pollCompliance(): Promise<void> {
   try {
-    const { status, body } = await fetchJson(`${API_BASE}/compliance`)
+    const { status, body } = await fetchJson(complianceUrl())
     const payload = body as Partial<CompliancePayload> | null
     if (status === 200 && payload !== null && payload.ok === true) {
       memoryStore.onCompliance(payload as CompliancePayload, null)
@@ -102,6 +120,34 @@ function stopPolling(): void {
   }
 }
 
+/** Session store selector shape (framework seat prop). */
+export type UseSessions = <T>(selector: (state: {
+  byId: Record<string, { cwd?: string | null } | undefined>
+}) => T) => T
+
+/** Hook stand-in when useSessions is not injected. */
+export function useNoopSessions<T>(selector: (state: { byId: Record<string, never> }) => T): T {
+  return selector({ byId: {} })
+}
+
+/** Resolve the open session's workspace cwd from seat props. */
+export function useSessionCwd(
+  sessionId: string | undefined,
+  useSessions: UseSessions,
+): string | null {
+  return useSessions((sessions) => {
+    if (!sessionId) return null
+    const cwd = sessions.byId[sessionId]?.cwd
+    return typeof cwd === 'string' && cwd.trim() ? cwd.trim() : null
+  })
+}
+
+/** Options from MemoryBody / MemoryTitle (session-scoped focus). */
+export interface MemoryFocusOpts {
+  cwd?: string | null
+  sessionId?: string | null
+}
+
 /** The pane's API: snapshot + actions. */
 export interface MemoryApi {
   snapshot: MemorySnapshot
@@ -110,6 +156,7 @@ export interface MemoryApi {
   /**
    * `PUT /file` with exactly the given content; true on success.
    * Pass `mtimeMs` from the last state poll for optimistic concurrency.
+   * Project saves include the key from the last state poll.
    */
   saveFile(target: 'me' | 'project', content: string, mtimeMs?: number): Promise<boolean>
   /** `DELETE /inbox/line/<n>`; true when a line was removed. */
@@ -123,14 +170,28 @@ export interface MemoryApi {
   setEnabled(enabled: boolean): Promise<boolean>
 }
 
-export function useMemory(): MemoryApi {
+export function useMemory(opts?: MemoryFocusOpts): MemoryApi {
   const snapshot = useSyncExternalStore(memoryStore.subscribe, memoryStore.getSnapshot, memoryStore.getSnapshot)
+  // Only MemoryBody / MemoryTitle pass opts; nested sections omit them so
+  // they do not clear the session focus the seats just set.
+  const hasFocus = opts !== undefined
+  const cwdOpt = opts?.cwd
+  const sessionOpt = opts?.sessionId
   useEffect(() => {
     startPolling()
+    if (hasFocus) {
+      const nextCwd = typeof cwdOpt === 'string' && cwdOpt.trim() ? cwdOpt.trim() : null
+      const nextSid = typeof sessionOpt === 'string' && sessionOpt.trim() ? sessionOpt.trim() : null
+      if (nextCwd !== focusCwd || nextSid !== focusSessionId) {
+        focusCwd = nextCwd
+        focusSessionId = nextSid
+        void pollAll()
+      }
+    }
     return () => {
       stopPolling()
     }
-  }, [])
+  }, [hasFocus, cwdOpt, sessionOpt])
   return useMemo<MemoryApi>(
     () => ({
       snapshot,
@@ -139,8 +200,12 @@ export function useMemory(): MemoryApi {
       },
       saveFile: async (target: 'me' | 'project', content: string, mtimeMs?: number): Promise<boolean> => {
         try {
-          const body: { target: 'me' | 'project'; content: string; mtimeMs?: number } = { target, content }
+          const body: FileRequest = { target, content }
           if (mtimeMs !== undefined) body.mtimeMs = mtimeMs
+          if (target === 'project') {
+            const key = memoryStore.getSnapshot().state?.project.key
+            if (key !== undefined && key.length > 0) body.key = key
+          }
           const { status, body: responseBody } = await fetchJson(`${API_BASE}/file`, {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },

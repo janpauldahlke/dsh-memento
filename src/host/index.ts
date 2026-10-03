@@ -5,8 +5,8 @@
  * - Bootstraps the vault (`~/.dsh/memory/`): directories created recursively,
  *   ME.md seeded from the bundled template only when absent, existing ME.md
  *   never touched, project MEMORY.md never auto-created.
- * - GET /api/dsh-memento/state — vault + inject state for the project the dsh
- *   web server was launched in (process cwd); fail-open, always JSON.
+ * - GET /api/dsh-memento/state — vault + inject state for an observed project
+ *   (`?cwd=` session workspace, else process cwd); fail-open, always JSON.
  * - POST /api/dsh-memento/capture — append one entry to `inbox.md` (M2).
  * - POST /api/dsh-memento/undo — remove the last entry this instance
  *   appended (M2); byte-identical restore, no-op when nothing to undo.
@@ -175,6 +175,28 @@ function registerHealthRoute(ctx: Context): void {
   ctx.effect(() => unregister, 'memento: health route')
 }
 
+/**
+ * Project cwd for pane/state observation. Prefer `?cwd=` (absolute path from
+ * the open session workspace); fall back to the dsh web process cwd.
+ */
+function observedCwd(req: IncomingMessage): string {
+  try {
+    const url = new URL(req.url ?? '/', 'http://local')
+    const cwdParam = url.searchParams.get('cwd')
+    if (
+      cwdParam !== null
+      && cwdParam.startsWith('/')
+      && !cwdParam.includes('\0')
+      && cwdParam.length < 4096
+    ) {
+      return cwdParam
+    }
+  } catch {
+    // malformed URL — fall through
+  }
+  return processCwd()
+}
+
 function registerStateRoute(ctx: Context, inbox: InboxStore): void {
   const unregister = ctx.webServer.register({
     kind: 'exact',
@@ -186,9 +208,9 @@ function registerStateRoute(ctx: Context, inbox: InboxStore): void {
             send(res, 405, { ok: false, error: 'method not allowed; use GET' })
             return
           }
-          // Server-global route: the observed project is the one this dsh web
-          // process was launched in. Per-session keys are used by the inject.
-          const cwd = processCwd()
+          // Prefer the open session's workspace (`?cwd=`); inject already keys
+          // off session.header.cwd — the pane should show the same project.
+          const cwd = observedCwd(req)
           const key = projectKey(cwd)
           const enabled = isEnabled(DSH_HOME)
           const state = readVault(DSH_HOME, key)

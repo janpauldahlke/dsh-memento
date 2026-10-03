@@ -195,7 +195,8 @@ export interface FileRequest {
   content: string
   /**
    * Project key override for target `project`. Defaults to the key of the
-   * server's launched process cwd (the same project `GET /state` observes).
+   * server's process cwd. The pane should pass the key from `GET /state`
+   * so saves follow the open session workspace.
    */
   key?: string
   /**

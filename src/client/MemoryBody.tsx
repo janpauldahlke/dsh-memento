@@ -13,7 +13,7 @@ import { appendPromoteToDraft, draftContainsFact, inboxFact } from '../shared/pr
 import { adoptFileText } from '../shared/reconcile.ts'
 import { promoteBus, type PromoteRequest } from './promoteBus.ts'
 import { memoryStore } from './store.ts'
-import { useMemory } from './useMemory.ts'
+import { useMemory, useNoopSessions, useSessionCwd, type UseSessions } from './useMemory.ts'
 import { MemoryIcon } from './MemoryIcon.tsx'
 
 /** Seed written by Create (must match assets/MEMORY.template.md). */
@@ -196,13 +196,6 @@ const inboxTextStyle: CSSProperties = {
   wordBreak: 'break-word',
 }
 
-const meRulesStyle: CSSProperties = {
-  ...muted,
-  fontSize: 11,
-  lineHeight: 1.4,
-  marginBottom: 6,
-}
-
 /** The cap-pressure counter: muted below cap, warn at cap, crit over cap. */
 function Counter({ lines, cap }: { lines: number; cap: number }): ReactNode {
   const atOrOver = lines >= cap
@@ -240,8 +233,6 @@ interface EditSectionProps {
   /** Present when the file is absent and can be created from this pane. */
   createLabel?: string
   createTitle?: string
-  /** Extra note under the purpose (ME.md rules). */
-  rules?: string
   /** REVIEW-02 R10: one line under the counter about injection budget. */
   budgetNote?: string
   target: 'me' | 'project'
@@ -258,7 +249,6 @@ function EditSection({
   mtimeMs,
   createLabel,
   createTitle,
-  rules,
   budgetNote,
   target,
   createSeed = '',
@@ -351,7 +341,6 @@ function EditSection({
         <div style={{ ...muted, fontSize: 11, marginBottom: 4 }}>{budgetNote}</div>
       ) : null}
       <div style={purposeStyle}>{purpose}</div>
-      {rules !== undefined ? <div style={meRulesStyle}>{rules}</div> : null}
       {fileText === undefined ? (
         <div style={{ ...muted, paddingBottom: 4 }}>
           {createLabel ?? 'no file'}
@@ -657,8 +646,13 @@ function InjectPreview({ text, enabled }: { text: string; enabled: boolean }): R
 }
 
 /** The pane: help + ME.md + project + inbox + inject preview + compliance. */
-export function MemoryBody(): ReactNode {
-  const { snapshot } = useMemory()
+export function MemoryBody(props: {
+  sessionId?: string
+  useSessions?: UseSessions
+} = {}): ReactNode {
+  const { sessionId, useSessions = useNoopSessions } = props
+  const sessionCwd = useSessionCwd(sessionId, useSessions)
+  const { snapshot } = useMemory({ cwd: sessionCwd, sessionId: sessionId ?? null })
   const state: StatePayload | null = snapshot.state
   return (
     <div style={box}>
@@ -678,7 +672,6 @@ export function MemoryBody(): ReactNode {
           <EditSection
             title={<>ME.md</>}
             purpose="Injected into every new session, everywhere. Keep it to things that stay true: who you are, how you work, hard constraints."
-            rules={'never record what `rg` can find · must still be true in three months · if you had to say it twice'}
             budgetNote="30 lines is the always-injected budget, not a memory limit. Anything else stays on disk and is read on request."
             cap={state.me.cap}
             fileText={state.me.exists ? state.me.text : undefined}

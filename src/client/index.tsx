@@ -7,9 +7,9 @@
  * `sidebar.right.pane.tab.title` (icon + label + over-cap tint).
  *
  * The pane's data lives in a module-level store (store.ts) polled by
- * useMemory.ts; the components themselves hold no module state, so the
- * bundle is load-once, dispose-clean, and the only runtime imports are the
- * platform baseline (react + jsx-runtime).
+ * useMemory.ts; body/title take sessionId/useSessions so Project follows the
+ * open workspace. Nested editors bind without focus opts. Bundle is
+ * load-once, dispose-clean; runtime imports are the platform baseline.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'

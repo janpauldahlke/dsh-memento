@@ -7,27 +7,26 @@
  *   green  — memory On and polls healthy
  *   grey   — Off / not yet loaded (offline)
  *   yellow — last poll or write reported an error
+ *
+ * Session seat props keep the shared poller focused on the open workspace
+ * (same as the pane body) even while the tab is collapsed.
  */
 import type { ReactNode } from 'react'
 import { TAB_TITLE } from '../shared/types.ts'
-import { useMemory } from './useMemory.ts'
-
-/**
- * Structural props type for the title seat: the framework passes more
- * (`useTabInfo`, locale kit, …) but the component only needs to render
- * itself, so it takes none of them.
- */
-export interface MemoryTitleProps {
-  [prop: string]: unknown
-}
+import { useMemory, useNoopSessions, useSessionCwd, type UseSessions } from './useMemory.ts'
 
 const COLOR_ACTIVE = '#22c55e'
 const COLOR_OFFLINE = '#8b93a7'
 const COLOR_ERROR = '#fbbf24'
 
-export function MemoryTitle(_props: MemoryTitleProps): ReactNode {
+export function MemoryTitle(props: {
+  sessionId?: string
+  useSessions?: UseSessions
+} = {}): ReactNode {
+  const { sessionId, useSessions = useNoopSessions } = props
+  const sessionCwd = useSessionCwd(sessionId, useSessions)
   // Bind the poller here so the chip stays live while the pane is closed.
-  const { snapshot } = useMemory()
+  const { snapshot } = useMemory({ cwd: sessionCwd, sessionId: sessionId ?? null })
   const state = snapshot.state
 
   let color = COLOR_OFFLINE
@@ -37,7 +36,7 @@ export function MemoryTitle(_props: MemoryTitleProps): ReactNode {
     tip = `Memory error: ${snapshot.error}`
   } else if (state !== null && state.enabled) {
     color = COLOR_ACTIVE
-    tip = 'Memory On'
+    tip = sessionCwd ? `Memory On · ${sessionCwd}` : 'Memory On'
   } else if (state !== null) {
     color = COLOR_OFFLINE
     tip = 'Memory Off'
