@@ -16,6 +16,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { TAB_ID, TAB_KIND, TAB_TITLE } from '../shared/types.ts'
 import { MemoryBody } from './MemoryBody.tsx'
+import { MemoryIcon } from './MemoryIcon.tsx'
 import { MemoryTitle } from './MemoryTitle.tsx'
 
 export const name = 'dsh-memento'
@@ -31,6 +32,7 @@ export function apply(ctx: Context): void {
       order: 270,
       title: () => TAB_TITLE,
       description: () => 'Bounded-file memory: ME.md, project MEMORY.md, inbox — edit, delete, see cap pressure',
+      icon: MemoryIcon,
     }],
   }
   const disposeType = ctx.sidebarRightTabs.register(definition)

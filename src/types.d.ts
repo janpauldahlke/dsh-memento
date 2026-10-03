@@ -150,6 +150,8 @@ declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
     order?: number
     title: () => string
     description?: () => string
+    /** Optional glyph before the title; without one the guide draws its cube placeholder. */
+    icon?: (props: { size?: number; className?: string }) => unknown
   }
   export interface SidebarRightTabDefinition {
     id: string
