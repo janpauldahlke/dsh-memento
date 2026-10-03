@@ -49,8 +49,21 @@ export function registerTools(
   }
 
   const disposers: Array<() => void> = []
-  disposers.push(registerRememberTool(tools, ctx, inbox, enabled))
-  disposers.push(registerHistorySearchTool(tools, ctx))
+  // Register independently: a schema reject on one tool must not wipe the other.
+  for (const [label, register] of [
+    ['memory_remember', () => registerRememberTool(tools, ctx, inbox, enabled)],
+    ['memory_history_search', () => registerHistorySearchTool(tools, ctx)],
+  ] as const) {
+    try {
+      disposers.push(register())
+    } catch (error) {
+      ctx.logger?.('dsh-memento')?.warn(
+        'tool %s not registered: %s',
+        label,
+        error instanceof Error ? error.message : String(error),
+      )
+    }
+  }
   return () => {
     for (const dispose of disposers) dispose()
   }
@@ -168,9 +181,11 @@ function registerHistorySearchTool(tools: ToolsFace, ctx: Context): () => void {
               required: ['projectKey', 'sessionId', 'time', 'eventType', 'snippet'],
               properties: {
                 projectKey: { type: 'string' },
-                sessionId: { type: ['string', 'null'] },
-                time: { type: ['string', 'null'] },
-                eventType: { type: ['string', 'null'] },
+                // Harness JSON Schema forbids type arrays (`["string","null"]`);
+                // nullable fields must use oneOf (see @deepseek-ai/dsh-tools).
+                sessionId: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+                time: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+                eventType: { oneOf: [{ type: 'string' }, { type: 'null' }] },
                 snippet: { type: 'string' },
               },
             },

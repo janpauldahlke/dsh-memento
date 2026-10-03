@@ -82,6 +82,12 @@ test('apply: registers 8 routes, 2 tools, 2 pre-step + 2 session listeners, no t
   assert.equal(toolDefs[1].parameters.properties.query.type, 'string')
   assert.equal(toolDefs[1].parameters.properties.allProjects.type, 'boolean')
   assert.deepEqual(toolDefs[1].output.schema.required, ['ok', 'scanned', 'hits', 'truncated', 'degraded'])
+  // Nullable hit fields must use oneOf — type arrays are rejected by dsh tools.
+  const hitProps = toolDefs[1].output.schema.properties.hits.items.properties
+  for (const key of ['sessionId', 'time', 'eventType']) {
+    assert.ok(Array.isArray(hitProps[key].oneOf), `${key} must use oneOf for nullability`)
+    assert.equal(hitProps[key].type, undefined, `${key} must not use a type array`)
+  }
   assert.deepEqual(
     listeners.map((l) => l.event),
     ['agent/pre-step', 'agent/pre-step', 'session/created', 'session/event', 'session/disposed'],
@@ -134,7 +140,7 @@ test('health route: 200 ok, milestone + version match the bundle exports', async
   assert.equal(status, 200)
   // Health must report exactly the milestone/version the bundle exports.
   assert.equal(mod.MILESTONE, 'M5')
-  assert.equal(mod.VERSION, '1.0.0')
+  assert.equal(mod.VERSION, '1.0.1')
   assert.deepEqual(json, { ok: true, plugin: 'dsh-local-memento', version: mod.VERSION, milestone: mod.MILESTONE })
   const wrong = await invoke('/api/dsh-memento/health', 'POST')
   assert.equal(wrong.status, 405)
