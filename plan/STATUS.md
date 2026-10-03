@@ -6,8 +6,8 @@ LAW: plan is `plan/`. Rules are `PROTOCOL.md`. If chat contradicts this file,
 
 ## Next 3
 
-Source: `plan/REVIEW-01.md` (read the item in full before starting it).
-Items are independent — stopping after any one leaves a working build.
+Source: `plan/REVIEW-01.md` — read the item in full first. Items are
+independent; stopping after any one leaves a working build.
 
 1. **R1 — lost update.** Pane clobbers hand edits to `ME.md`: sticky draft +
    precondition-free `PUT`. Adopt external changes when not dirty; add
