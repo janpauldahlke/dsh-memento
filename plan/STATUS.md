@@ -34,11 +34,10 @@ The "written judgement" task is deferred until the review items are closed.
 
 ## Done log
 
-- 2026-10-03 — **REVIEW-01 received** (design author). Verdict: correct build,
-  ritual held, but opaque to any user who has not read `DESIGN.md`.
-- 2026-10-03 — M5 accepted 9/9; M2 7/7, M3 10/10, M4 7/7 re-run green.
-  93/93 tests, tsc clean. M3 compliance rate still **0/0** (no session has
-  *ended* under an M3+ build).
+- 2026-10-03 — **REVIEW-01 received**: correct build, ritual held, opaque to
+  anyone who has not read `DESIGN.md`.
+- 2026-10-03 — M5 9/9; M2/M3/M4 re-run green. 93/93 tests, tsc clean.
+  Compliance still **0/0** — no session has *ended* under an M3+ build.
 
 ## Reminders
 
