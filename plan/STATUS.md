@@ -1,11 +1,11 @@
 # STATUS — dsh-memento
-Updated: 2026-10-03T14:32+02:00 · Phase: **publish prep**
+Updated: 2026-10-03T14:47+02:00 · Phase: **npm rename → dsh-local-memento**
 LAW: plan is `plan/`. Rules are `PROTOCOL.md`. If chat contradicts this file,
 **this file wins**. Keep ≤45 lines; rewrite at every working block.
 ## Next 3
-1. **Human publish** — glance README/media, then npm / dsh.pub submit
-   (https://dsh.pub/en/submit/). Agent prepares only.
-2. — (optional: commit publish prep when asked)
+1. **Human:** commit + push rename, `npm login`, `npm publish` as
+   **dsh-local-memento@1.0.0** (no new dsh.pub PR — GitHub URL unchanged).
+2. —
 3. —
 ## Milestones
 - [x] M0–M5 · [x] REVIEW-01 · [x] REVIEW-02 · [x] smoke scripted

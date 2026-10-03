@@ -269,7 +269,7 @@ try {
   const windowShim = { __ModuleLoader__: { load: (mod) => loads.push(mod) } }
   const clientSrc = readFileSync(join(REPO, 'lib', 'client.js'), 'utf8')
   new Function('window', clientSrc)(windowShim)
-  assert(loads.length === 1 && loads[0].id === 'dsh-memento', 'client bundle must register exactly one ModuleLoader module')
+  assert(loads.length === 1 && loads[0].id === 'dsh-local-memento', 'client bundle must register exactly one ModuleLoader module')
   assert(typeof loads[0].factory === 'function', 'ModuleLoader module must carry a factory (CJS wrapper)')
   const factory = loads[0].factory
 
@@ -335,7 +335,7 @@ try {
     if (!PLATFORM.has(name)) throw new Error(`client bundle required "${name}" — outside the platform baseline`)
     return {}
   })
-  assert(typeof clientExports.apply === 'function' && clientExports.name === 'dsh-memento', 'client exports missing')
+  assert(typeof clientExports.apply === 'function' && clientExports.name === 'dsh-local-memento', 'client exports missing')
 
   // Register the seats under a mock ctx (same contract as the host smoke test).
   const tabSeats = []
@@ -348,11 +348,11 @@ try {
     effect: (fn) => { clientCtx.__dispose = fn },
   }
   clientExports.apply(clientCtx)
-  const bodyDef = tabSeats.find((t) => t.name === 'sidebar.right.pane.tab' && t.key === 'dsh-memento')
-  const titleDef = tabSeats.find((t) => t.name === 'sidebar.right.pane.tab.title' && t.key === 'dsh-memento')
+  const bodyDef = tabSeats.find((t) => t.name === 'sidebar.right.pane.tab' && t.key === 'dsh-local-memento')
+  const titleDef = tabSeats.find((t) => t.name === 'sidebar.right.pane.tab.title' && t.key === 'dsh-local-memento')
   assert(bodyDef?.component, 'pane body seat not registered (keyed memento)')
   assert(titleDef?.component, 'title seat not registered (keyed memento)')
-  assert(tabSeats.some((t) => t.tabType?.id === 'dsh-memento'), 'rightbar tab type not registered')
+  assert(tabSeats.some((t) => t.tabType?.id === 'dsh-local-memento'), 'rightbar tab type not registered')
   record(true, '6', 'lib/client.js is a CJS ModuleLoader factory; factory ran under a strict require (react + jsx-runtime only); seats registered')
 
   // ------------------------------------------------ check 7 (30s poll, no…) ---

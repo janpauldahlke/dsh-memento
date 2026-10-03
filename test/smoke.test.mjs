@@ -25,7 +25,7 @@ const mod = await import('../lib/index.js')
 // ---------------------------------------------------------------- exports ---
 
 test('bundle exports: name, inject seat, route constants', () => {
-  assert.equal(mod.name, 'dsh-memento')
+  assert.equal(mod.name, 'dsh-local-memento')
   assert.deepEqual(mod.inject, ['tools'])
   assert.equal(mod.HEALTH_ROUTE, '/api/dsh-memento/health')
   assert.equal(mod.STATE_ROUTE, '/api/dsh-memento/state')
@@ -135,7 +135,7 @@ test('health route: 200 ok, milestone + version match the bundle exports', async
   // Health must report exactly the milestone/version the bundle exports.
   assert.equal(mod.MILESTONE, 'M5')
   assert.equal(mod.VERSION, '1.0.0')
-  assert.deepEqual(json, { ok: true, plugin: 'dsh-memento', version: mod.VERSION, milestone: mod.MILESTONE })
+  assert.deepEqual(json, { ok: true, plugin: 'dsh-local-memento', version: mod.VERSION, milestone: mod.MILESTONE })
   const wrong = await invoke('/api/dsh-memento/health', 'POST')
   assert.equal(wrong.status, 405)
 })

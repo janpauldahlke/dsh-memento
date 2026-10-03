@@ -19,7 +19,7 @@ import { MemoryBody } from './MemoryBody.tsx'
 import { MemoryIcon } from './MemoryIcon.tsx'
 import { MemoryTitle } from './MemoryTitle.tsx'
 
-export const name = 'dsh-memento'
+export const name = 'dsh-local-memento'
 export const inject = ['slots', 'sidebarRightTabs']
 
 export function apply(ctx: Context): void {

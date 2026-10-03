@@ -1,6 +1,7 @@
-# dsh-memento layer: one Loader row for the dual-face package.
+# dsh-local-memento layer: one Loader row for the dual-face package.
 # Host half = package root export (lib/index.js); browser half = ./client
 # export (lib/client.js) discovered from the package's dsh.client declaration.
+# npm name is dsh-local-memento (dsh-memento was taken); GitHub repo stays dsh-memento.
 - insert:
     - id: memento
-      name: dsh-memento
+      name: dsh-local-memento

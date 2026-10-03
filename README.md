@@ -1,7 +1,11 @@
-# dsh-memento
+# dsh-local-memento
 
 Bounded-file **memory** for local coding agents in the **DeepSeek Harness**
 web UI.
+
+> npm package name is **`dsh-local-memento`** (`dsh-memento` was already taken
+> on the registry). The GitHub repo remains
+> [`janpauldahlke/dsh-memento`](https://github.com/janpauldahlke/dsh-memento).
 
 New sessions get a warm start from a short `ME.md` profile and an optional
 project `MEMORY.md`. Capture is free (`Remember this:` → inbox). Promotion into
@@ -17,7 +21,8 @@ automatic write. No embeddings, no vector store, no LLM calls inside the plugin.
 | NVIDIA GPU util / VRAM / power | [`dsh-gpu-monitor-nvml`](https://github.com/janpauldahlke/dsh-gpu-monitor-nvml) |
 | Local LLM endpoint / slot health | [`dsh-slot-health`](https://github.com/janpauldahlke/dsh-slot-health) |
 
-This package: [`dsh-memento`](https://github.com/janpauldahlke/dsh-memento).
+This package: [`dsh-local-memento`](https://www.npmjs.com/package/dsh-local-memento)
+· source [`janpauldahlke/dsh-memento`](https://github.com/janpauldahlke/dsh-memento).
 
 Verified against DeepSeek Harness **`0.1.7-rc.2`** (`dsh web`).
 
@@ -62,7 +67,7 @@ Light theme, matching the DSH default.
 ### From npm (recommended)
 
 ```sh
-dsh plugin --profile web add dsh-memento
+dsh plugin --profile web add dsh-local-memento
 # restart dsh web (or rely on live patch reload), then hard-refresh the browser
 ```
 
@@ -90,7 +95,7 @@ env -u DSH_WEB_URL -u DSH_SHELL -u DSH_SESSION_ID dsh web --no-open
 Uninstall:
 
 ```sh
-dsh plugin --profile web remove dsh-memento
+dsh plugin --profile web remove dsh-local-memento
 # restart the web instance that had the plugin
 ```
 

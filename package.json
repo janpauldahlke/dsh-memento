@@ -1,5 +1,5 @@
 {
-  "name": "dsh-memento",
+  "name": "dsh-local-memento",
   "version": "1.0.0",
   "description": "Bounded-file memory for DeepSeek Harness local agents (ME.md + project MEMORY.md vault, cache-stable inject, inbox, Memory rightbar). No store, no embeddings, no LLM calls.",
   "type": "module",

@@ -2,8 +2,8 @@
  * Shared constants and types for the dsh-memento dual-face package.
  */
 
-/** Package identity (≡ package.json `name`). */
-export const PLUGIN = 'dsh-memento'
+/** Package identity (≡ package.json `name`). npm: dsh-local-memento. */
+export const PLUGIN = 'dsh-local-memento'
 
 /** Host HTTP route (exact path, no trailing slash). */
 export const HEALTH_ROUTE = '/api/dsh-memento/health'
@@ -46,8 +46,8 @@ export const ENABLED_ROUTE = '/api/dsh-memento/enabled'
 /** Agent tool name (M5): read-only session-log archaeology. */
 export const HISTORY_SEARCH_TOOL = 'memory_history_search'
 
-/** Client rightbar tab identity. */
-export const TAB_ID = 'dsh-memento'
+/** Client rightbar tab identity (matches package name / ModuleLoader id). */
+export const TAB_ID = 'dsh-local-memento'
 export const TAB_KIND = 'memento'
 export const TAB_TITLE = 'Memory'
 

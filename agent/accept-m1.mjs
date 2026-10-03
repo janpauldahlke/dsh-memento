@@ -125,7 +125,7 @@ async function waitForHealth(timeoutMs = 15_000) {
     try {
       const { status, json } = await httpJson('/api/dsh-memento/health')
       last = `HTTP ${status}: ${JSON.stringify(json).slice(0, 120)}`
-      if (status === 200 && json?.ok === true && json?.plugin === 'dsh-memento') return json
+      if (status === 200 && json?.ok === true && json?.plugin === 'dsh-local-memento') return json
     } catch (err) { last = err.message }
     await new Promise(r => setTimeout(r, 500))
   }
