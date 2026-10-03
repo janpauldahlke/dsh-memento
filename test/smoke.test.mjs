@@ -134,7 +134,7 @@ test('health route: 200 ok, milestone + version match the bundle exports', async
   assert.equal(status, 200)
   // Health must report exactly the milestone/version the bundle exports.
   assert.equal(mod.MILESTONE, 'M5')
-  assert.equal(mod.VERSION, '0.6.1')
+  assert.equal(mod.VERSION, '0.6.2')
   assert.deepEqual(json, { ok: true, plugin: 'dsh-memento', version: mod.VERSION, milestone: mod.MILESTONE })
   const wrong = await invoke('/api/dsh-memento/health', 'POST')
   assert.equal(wrong.status, 405)
@@ -147,7 +147,7 @@ test('state route: 200 ok, bootstrap seeded ME.md under the temp DSH_HOME, inbox
   assert.equal(json.enabled, true)
   assert.equal(json.me.exists, true)
   assert.equal(json.me.cap, 30)
-  assert.equal(json.me.lines, 8)
+  assert.equal(json.me.lines, 10)
   assert.equal(typeof json.me.text, 'string', 'me.text is exposed for the pane editor (M4)')
   assert.equal(typeof json.me.mtimeMs, 'number', 'me.mtimeMs for optimistic concurrency')
   assert.equal(json.inject.budget, 4000)

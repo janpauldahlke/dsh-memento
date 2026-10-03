@@ -114,6 +114,11 @@ export interface MemoryApi {
   saveFile(target: 'me' | 'project', content: string, mtimeMs?: number): Promise<boolean>
   /** `DELETE /inbox/line/<n>`; true when a line was removed. */
   deleteInboxLine(n: number): Promise<boolean>
+  /**
+   * `POST /inbox/line` — restore a promoted line (REVIEW-02 R9 Undo).
+   * `n` is the preferred 1-based position (clamped to the end).
+   */
+  restoreInboxLine(text: string, n?: number): Promise<boolean>
   /** `POST /enabled` — create/remove `~/.dsh/memory/.off`. */
   setEnabled(enabled: boolean): Promise<boolean>
 }
@@ -170,6 +175,27 @@ export function useMemory(): MemoryApi {
           return false
         } catch (error) {
           memoryStore.onState(snapshot.state, `delete: ${errorMessage(error)}`)
+          return false
+        }
+      },
+      restoreInboxLine: async (text: string, n?: number): Promise<boolean> => {
+        try {
+          const body: { text: string; n?: number } = { text }
+          if (n !== undefined) body.n = n
+          const { status, body: responseBody } = await fetchJson(`${API_BASE}/inbox/line`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          const payload = responseBody as { ok?: boolean; inserted?: boolean; error?: string } | null
+          if (status === 200 && payload !== null && payload.ok === true && payload.inserted === true) {
+            await pollAll()
+            return true
+          }
+          memoryStore.onState(snapshot.state, (payload?.error ?? `restore: HTTP ${status}`))
+          return false
+        } catch (error) {
+          memoryStore.onState(snapshot.state, `restore: ${errorMessage(error)}`)
           return false
         }
       },

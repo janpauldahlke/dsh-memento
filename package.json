@@ -1,7 +1,7 @@
 {
   "name": "dsh-memento",
-  "version": "0.6.1",
-  "description": "Bounded-file memory for DeepSeek Harness: ME.md + project MEMORY.md vault, cache-stable inject, plain-line inbox. No store, no embeddings, no LLM calls.",
+  "version": "0.6.2",
+  "description": "Bounded-file memory for DeepSeek Harness local agents (ME.md + project MEMORY.md vault, cache-stable inject, inbox, Memory rightbar). No store, no embeddings, no LLM calls.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -12,16 +12,36 @@
   "files": [
     "lib",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "LICENSE",
+    "media"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/janpauldahlke/dsh-memento.git"
+  },
+  "homepage": "https://github.com/janpauldahlke/dsh-memento#readme",
+  "bugs": {
+    "url": "https://github.com/janpauldahlke/dsh-memento/issues"
+  },
   "scripts": {
     "build": "node build.mjs && tsc --noEmit"
   },
   "keywords": [
+    "dsh-plugin",
     "deepseek-harness",
+    "deepseek-harness-plugin",
     "dsh",
+    "cordis",
+    "cordis-plugin",
     "memory",
-    "vault"
+    "vault",
+    "agent-memory",
+    "inbox",
+    "local-agents",
+    "coding-agents",
+    "sidebar",
+    "web-ui"
   ],
   "dsh": {
     "bundle": {

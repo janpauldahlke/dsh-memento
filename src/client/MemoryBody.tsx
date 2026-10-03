@@ -1,15 +1,18 @@
 /**
- * The Memory pane body (M4 + REVIEW-01): the human surface for bounded-file
- * memory — edit the vault, see what was injected, stop the plugin, and read
- * the inbox.
+ * The Memory pane body (M4 + REVIEW-01 + REVIEW-02): the human surface for
+ * bounded-file memory — edit the vault, promote inbox lines into drafts,
+ * see what was injected, stop the plugin, and read the inbox.
  *
  * Inline styles only (no CSS pipeline). Runtime imports: react (+jsx-runtime)
  * and the local modules — the platform baseline for the CJS bundle.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { InboxLinePayload, StatePayload } from '../shared/types.ts'
+import { appendPromoteToDraft, draftContainsFact, inboxFact } from '../shared/promote.ts'
 import { adoptFileText } from '../shared/reconcile.ts'
+import { promoteBus, type PromoteRequest } from './promoteBus.ts'
+import { memoryStore } from './store.ts'
 import { useMemory } from './useMemory.ts'
 import { MemoryIcon } from './MemoryIcon.tsx'
 
@@ -131,7 +134,8 @@ const textareaStyle: CSSProperties = {
   background: 'var(--dsh-color-bg-subtle, rgba(255,255,255,0.03))',
   color: 'inherit',
   resize: 'vertical',
-  whiteSpace: 'pre',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
   tabSize: 2,
 }
 
@@ -216,9 +220,15 @@ function Counter({ lines, cap }: { lines: number; cap: number }): ReactNode {
             : undefined,
       }}
     >
-      {lines} / {cap}
+      {lines} / {cap} lines
     </span>
   )
+}
+
+interface PendingPromote {
+  fact: string
+  sourceN: number
+  sourceText: string
 }
 
 interface EditSectionProps {
@@ -232,6 +242,8 @@ interface EditSectionProps {
   createTitle?: string
   /** Extra note under the purpose (ME.md rules). */
   rules?: string
+  /** REVIEW-02 R10: one line under the counter about injection budget. */
+  budgetNote?: string
   target: 'me' | 'project'
   /** Initial seed for Create (project header); default empty for me. */
   createSeed?: string
@@ -247,16 +259,19 @@ function EditSection({
   createLabel,
   createTitle,
   rules,
+  budgetNote,
   target,
   createSeed = '',
 }: EditSectionProps): ReactNode {
-  const { saveFile } = useMemory()
+  const { saveFile, deleteInboxLine, restoreInboxLine } = useMemory()
   const [editor, setEditor] = useState(() => adoptFileText(fileText, {
     draft: null,
     baseline: undefined,
     conflict: false,
   }))
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [pendingPromotes, setPendingPromotes] = useState<PendingPromote[]>([])
+  const [promoteUndo, setPromoteUndo] = useState<PendingPromote | null>(null)
   // Keep the latest mtime for Save without re-binding the effect.
   const mtimeRef = useRef(mtimeMs)
   mtimeRef.current = mtimeMs
@@ -265,9 +280,30 @@ function EditSection({
     setEditor((prev) => adoptFileText(fileText, prev))
   }, [fileText])
 
+  // REVIEW-02 R9: consume promote requests aimed at this editor.
+  const promoteSnap = useSyncExternalStore(promoteBus.subscribe, promoteBus.getSnapshot, promoteBus.getSnapshot)
+  useEffect(() => {
+    if (promoteSnap === null || promoteSnap.target !== target) return
+    if (fileText === undefined) return // wait until Create lands a draft
+    const req = promoteBus.take(target)
+    if (req === null) return
+    setEditor((prev) => {
+      const base = prev.draft ?? fileText ?? ''
+      return { ...prev, draft: appendPromoteToDraft(base, req.fact), conflict: prev.conflict }
+    })
+    setPendingPromotes((prev) => [...prev, {
+      fact: req.fact,
+      sourceN: req.sourceN,
+      sourceText: req.sourceText,
+    }])
+    setPromoteUndo(null)
+    setStatus('idle')
+  }, [promoteSnap, target, fileText])
+
   const { draft, baseline, conflict } = editor
   const lines = draft === null ? 0 : countLines(draft)
   const atOrOver = lines >= cap
+  const over = lines > cap
   const dirty = draft !== null && baseline !== undefined && draft !== baseline
 
   const save = async (forceMtime?: number): Promise<void> => {
@@ -278,6 +314,24 @@ function EditSection({
     setStatus(ok ? 'saved' : 'error')
     if (ok) {
       setEditor({ draft, baseline: draft, conflict: false })
+      // Promotion is a move: drop inbox lines whose fact is still in the saved draft.
+      // Resolve current line numbers by exact text (indices can shift).
+      const inboxLines = memoryStore.getSnapshot().state?.inbox.lines ?? []
+      const toRemove = pendingPromotes
+        .filter((p) => draftContainsFact(draft, p.fact))
+        .map((p) => {
+          const live = inboxLines.find((l) => l.text === p.sourceText)
+          return { ...p, sourceN: live?.n ?? p.sourceN }
+        })
+        .slice()
+        .sort((a, b) => b.sourceN - a.sourceN)
+      setPendingPromotes((prev) => prev.filter((p) => !draftContainsFact(draft, p.fact)))
+      let lastRemoved: PendingPromote | null = null
+      for (const item of toRemove) {
+        const removed = await deleteInboxLine(item.sourceN)
+        if (removed) lastRemoved = item
+      }
+      setPromoteUndo(lastRemoved)
     }
   }
 
@@ -293,6 +347,9 @@ function EditSection({
         <span style={heading}>{title}</span>
         {fileText !== undefined ? <Counter lines={lines} cap={cap} /> : null}
       </div>
+      {budgetNote !== undefined && fileText !== undefined ? (
+        <div style={{ ...muted, fontSize: 11, marginBottom: 4 }}>{budgetNote}</div>
+      ) : null}
       <div style={purposeStyle}>{purpose}</div>
       {rules !== undefined ? <div style={meRulesStyle}>{rules}</div> : null}
       {fileText === undefined ? (
@@ -331,7 +388,13 @@ function EditSection({
           {atOrOver ? (
             <div
               title="at cap — adding a line means removing one"
-              style={{ ...muted, marginTop: 4, color: 'var(--dsh-color-warning, #d97706)' }}
+              style={{
+                ...muted,
+                marginTop: 4,
+                color: over
+                  ? 'var(--dsh-color-error, #dc2626)'
+                  : 'var(--dsh-color-warning, #d97706)',
+              }}
             >
               at cap — adding a line means removing one
             </div>
@@ -360,6 +423,22 @@ function EditSection({
           >
             {status === 'saving' ? 'saving…' : status === 'saved' ? 'saved ✓' : 'Save'}
           </button>
+          {promoteUndo !== null ? (
+            <div style={{ ...muted, marginTop: 4 }}>
+              promoted from inbox —{' '}
+              <button
+                type="button"
+                style={{ ...buttonStyle, marginTop: 0, display: 'inline', padding: '0 6px' }}
+                onClick={() => {
+                  const item = promoteUndo
+                  setPromoteUndo(null)
+                  void restoreInboxLine(item.sourceText, item.sourceN)
+                }}
+              >
+                Undo
+              </button>
+            </div>
+          ) : null}
           {status === 'error' ? <div style={{ ...muted, marginTop: 4, color: 'var(--dsh-color-error, #dc2626)' }}>save failed — see status line</div> : null}
         </>
       )}
@@ -367,20 +446,57 @@ function EditSection({
   )
 }
 
-/** One read-only inbox line with its delete affordance. */
+const iconBtn: CSSProperties = {
+  ...buttonStyle,
+  marginTop: 0,
+  padding: '0 6px',
+  lineHeight: '18px',
+  fontSize: 11,
+  color: 'var(--dsh-color-text-muted, #8a8a8a)',
+  flexShrink: 0,
+}
+
+/** One inbox line with promote (↑ → ME / → project) and delete. */
 function InboxLineRow({
   line,
   cwd,
   projectKey,
+  projectExists,
+  createSeed,
 }: {
   line: InboxLinePayload
   cwd: string
   projectKey: string
+  projectExists: boolean
+  createSeed: string
 }): ReactNode {
-  const { deleteInboxLine } = useMemory()
+  const { deleteInboxLine, saveFile } = useMemory()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
   const parsed = parseInboxLine(line.text)
   const chip = parsed.key !== null ? projectChip(parsed.key, cwd, projectKey) : null
   const when = parsed.time !== null ? relativeTime(parsed.time) : null
+
+  const promote = (target: 'me' | 'project'): void => {
+    const fact = inboxFact(line.text)
+    const req: Omit<PromoteRequest, 'seq'> = {
+      target,
+      fact,
+      sourceN: line.n,
+      sourceText: line.text,
+    }
+    setOpen(false)
+    if (target === 'project' && !projectExists) {
+      setBusy(true)
+      void saveFile('project', createSeed).then((ok) => {
+        setBusy(false)
+        if (ok) promoteBus.request(req)
+      })
+      return
+    }
+    promoteBus.request(req)
+  }
+
   return (
     <div style={inboxRowStyle} title={line.text}>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -392,22 +508,40 @@ function InboxLineRow({
         </div>
         <div style={inboxTextStyle}>{parsed.body}</div>
       </div>
-      <button
-        type="button"
-        aria-label={`delete inbox line ${line.n}`}
-        title={`delete line ${line.n}`}
-        style={{
-          ...buttonStyle,
-          marginTop: 0,
-          padding: '0 6px',
-          lineHeight: '18px',
-          fontSize: 12,
-          color: 'var(--dsh-color-text-muted, #8a8a8a)',
-        }}
-        onClick={() => { void deleteInboxLine(line.n) }}
-      >
-        ×
-      </button>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+        {open ? (
+          <div style={{ display: 'flex', gap: 2 }}>
+            <button type="button" style={iconBtn} disabled={busy} title="Append to ME.md draft (unsaved)" onClick={() => { promote('me') }}>
+              → ME
+            </button>
+            <button type="button" style={iconBtn} disabled={busy} title="Append to project MEMORY.md draft (unsaved)" onClick={() => { promote('project') }}>
+              → project
+            </button>
+          </div>
+        ) : null}
+        <div style={{ display: 'flex', gap: 2 }}>
+          <button
+            type="button"
+            aria-label={`promote inbox line ${line.n}`}
+            aria-expanded={open}
+            title="Promote into ME.md or project draft"
+            style={iconBtn}
+            disabled={busy}
+            onClick={() => { setOpen((v) => !v) }}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            aria-label={`delete inbox line ${line.n}`}
+            title={`delete line ${line.n}`}
+            style={iconBtn}
+            onClick={() => { void deleteInboxLine(line.n) }}
+          >
+            ×
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -545,6 +679,7 @@ export function MemoryBody(): ReactNode {
             title={<>ME.md</>}
             purpose="Injected into every new session, everywhere. Keep it to things that stay true: who you are, how you work, hard constraints."
             rules={'never record what `rg` can find · must still be true in three months · if you had to say it twice'}
+            budgetNote="30 lines is the always-injected budget, not a memory limit. Anything else stays on disk and is read on request."
             cap={state.me.cap}
             fileText={state.me.exists ? state.me.text : undefined}
             mtimeMs={state.me.mtimeMs}
@@ -556,7 +691,7 @@ export function MemoryBody(): ReactNode {
                 Project <span style={{ fontFamily: 'var(--dsh-font-mono, monospace)', fontSize: 12 }}>{shortPath(state.project.cwd)}</span>
               </span>
             }
-            purpose={`Injected only when you work in ${state.project.cwd}. Decisions, gotchas and conventions that are not obvious from the code.`}
+            purpose={`Injected only when you work in ${shortPath(state.project.cwd)}. Decisions, gotchas and conventions that are not obvious from the code.`}
             cap={state.project.cap}
             fileText={state.project.exists ? state.project.text : undefined}
             mtimeMs={state.project.mtimeMs}
@@ -573,7 +708,7 @@ export function MemoryBody(): ReactNode {
               </span>
             </div>
             <div style={purposeStyle}>
-              A scratch list — <strong>nothing here is sent to the agent</strong>. Saying &apos;Remember this: …&apos; in chat lands a line here. To make it stick, copy the line up into ME.md or the project file.
+              A scratch list — <strong>not injected — the agent only reads this if it looks</strong>. Saying &apos;Remember this: …&apos; in chat lands a line here. Use ↑ to promote a line into ME.md or the project draft.
             </div>
             {state.inbox.total === 0 ? (
               <div style={muted}>nothing captured yet — &quot;Remember this: …&quot; or the memory_remember tool lands here</div>
@@ -585,10 +720,12 @@ export function MemoryBody(): ReactNode {
                     line={line}
                     cwd={state.project.cwd}
                     projectKey={state.project.key}
+                    projectExists={state.project.exists}
+                    createSeed={PROJECT_CREATE_SEED}
                   />
                 ))}
                 <div style={{ ...muted, marginTop: 4 }}>
-                  delete removes only that line · copy a line up into ME.md or the project memory to promote it
+                  ↑ appends to the draft (unsaved) · Save moves it out of the inbox · × deletes
                 </div>
               </>
             )}

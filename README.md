@@ -1,79 +1,170 @@
 # dsh-memento
 
-> **Implementing agent: do not work from this file.** It is human orientation and
-> contains no tasks. Go to [`plan/PROTOCOL.md`](./plan/PROTOCOL.md), then
-> [`plan/STATUS.md`](./plan/STATUS.md) — **Next 3 there is your entire scope.**
-> `archive/` is superseded and must not be implemented from.
+Bounded-file **memory** for local coding agents in the **DeepSeek Harness**
+web UI.
 
-**Persistent memory for DeepSeek Harness** — a warm start and durable project
-lore across sessions, for **local-only agents**, without a second VLM, a memory
-sidecar, or a vector store.
+New sessions get a warm start from a short `ME.md` profile and an optional
+project `MEMORY.md`. Capture is free (`Remember this:` → inbox). Promotion into
+the injected tier is a human edit in the **Memory** rightbar — never an
+automatic write. No embeddings, no vector store, no LLM calls inside the plugin.
 
-Status: **M0 skeleton** — installable dual-face plugin: loads both halves and
-answers `GET /api/dsh-memento/health`. No memory features yet (M1+).
-
-| Document | Role |
-| --- | --- |
-| [`plan/KICKOFF.md`](./plan/KICKOFF.md) | The prompt to paste into the overnight local agent |
-| [`plan/`](./plan/README.md) | **Current source of truth** — design decisions + M0–M5 with testable acceptance |
-| [`plan/STATUS.md`](./plan/STATUS.md) | Only resume source for the implementing agent |
-| [`archive/ORIGIN.md`](./archive/ORIGIN.md) | Origin research (incl. rejected options). Superseded by `plan/DESIGN.md` §0 |
-| [`skills/dsh-out-of-tree-plugin/SKILL.md`](./skills/dsh-out-of-tree-plugin/SKILL.md) | How to build/install/verify a dual-face DSH plugin (vendored from `overnite`) |
-
-Sibling plugins (dual-face `dsh.bundle` bar; we mirror their **packaging**, not
-their interaction model — see `plan/DESIGN.md`):
+**Related plugins** (same dual-face `dsh.bundle` shape for the web rightbar):
 
 | Plugin | Repo |
 | --- | --- |
 | Process & port lifecycle | [`dsh-agent-processes`](https://github.com/janpauldahlke/dsh-agent-processes) |
 | Long-horizon task status | [`dsh-local-long-horizon`](https://github.com/janpauldahlke/dsh-local-long-horizon) |
-| GPU monitor | [`dsh-gpu-monitor-nvml`](https://github.com/janpauldahlke/dsh-gpu-monitor-nvml) |
-| Slot health | [`dsh-slot-health`](https://github.com/janpauldahlke/dsh-slot-health) |
+| NVIDIA GPU util / VRAM / power | [`dsh-gpu-monitor-nvml`](https://github.com/janpauldahlke/dsh-gpu-monitor-nvml) |
+| Local LLM endpoint / slot health | [`dsh-slot-health`](https://github.com/janpauldahlke/dsh-slot-health) |
+
+This package: [`dsh-memento`](https://github.com/janpauldahlke/dsh-memento).
+
+Verified against DeepSeek Harness **`0.1.7-rc.2`** (`dsh web`).
 
 ---
 
-## One-liner
+## Requirements
 
-Memory is not a store you grow. It is a **small set of bounded files, rewritten
-rather than appended, read by ritual rather than by judgment.**
+- DeepSeek Harness web profile (`dsh web`).
+- Node.js **≥ 20** to build.
 
-## The design in five lines
+---
 
-1. **`ME.md`** — ~30 lines, hand-edited, injected verbatim at session start.
-   That is the whole bond layer. Measured: 41 sessions of real history yielded
-   about a dozen durable personal facts. A dozen facts justifies a file, not a pipeline.
-2. **The cap is the gate.** Nothing enters the injected files except when a hard
-   line cap forces an eviction. That turns an impossible absolute judgment
-   ("is this durable?") into a cheap comparison ("is this in the top 30?").
-3. **`inbox.md`** — append-only, never injected, no gate, no tags, no types.
-   Appending is free precisely because nobody reads it unprompted.
-4. **The agent never writes the injected tier.** It may append to the inbox.
-   Promotion is a human edit. This keeps weak local-model judgment away from
-   the expensive surface.
-5. **Ritual over judgment.** Read at block start, unconditionally. The plugin's
-   real engineering is *verifying the ritual happened* — not storage.
+## Screenshots
 
-Three rules that live in `ME.md`'s own header, so the model sees them too:
-never remember what `rg` can find; it must still be true in three months; if you
-had to say it twice, it belongs here.
+Light theme, matching the DSH default.
 
-## Deliberately absent
-
-No embeddings, no Qdrant, no sqlite-vec, no FTS, no promote ladder, no
-frontmatter schema, no LLM calls inside the plugin, and no extraction from the
-DSH session logs. The logs were measured and rejected as a memory *source*
-(their free summaries are task-shaped; the correction signal is 9 hits in 838
-messages) but kept as a read-only archaeology tool — `plan/DESIGN.md` §5.
-
-## Why not the existing shelf
-
-| Approach | Why we stepped away |
+| Pane + chat | Memory pane (fullscreen) |
 | --- | --- |
-| OpenViking / VikingMem | Strong architecture; needs an extract VLM we cannot afford next to local-hauhau |
-| agentmemory + DSH connect | Remember/search worked in smoke; daemon lifecycle / ops friction was wrong for "just `dsh web`" |
-| mem0-style many-files | Accumulation without rewrite — needs a ranker to survive its own growth |
-| Eris promote ladder | Proven for large KBs, but stage→promote→commit is paperwork for bond facts. Four of its seven record fields exist only to service the ladder |
+| ![Memory pane open](media/pane-open.png) | ![Memory fullscreen](media/memory-pane.png) |
+
+| Start guide (Memory book icon) |
+| --- |
+| ![Memory in the Start guide](media/guide-memory.png) |
+
+---
+
+## What you see
+
+- **Memory rightbar** — edit `ME.md` and the project file, promote or delete
+  inbox lines, preview what was injected, toggle the plugin on/off.
+- **Status tint on the tab title** — green when On, grey when Off, yellow on
+  poll/write error.
+- **Inbox** — scratch list from `Remember this:` / `memory_remember`. Not
+  injected; the agent only reads it if it looks under `~/.dsh/memory/`.
+- **↑ promote** — appends a line into the ME or project **draft** (unsaved).
+  Save moves it out of the inbox (with Undo).
+
+---
+
+## Install
+
+### From npm (recommended)
+
+```sh
+dsh plugin --profile web add dsh-memento
+# restart dsh web (or rely on live patch reload), then hard-refresh the browser
+```
+
+### From GitHub
+
+```sh
+dsh plugin --profile web add github:janpauldahlke/dsh-memento
+```
+
+### From a git checkout (developers)
+
+```sh
+git clone https://github.com/janpauldahlke/dsh-memento.git
+cd dsh-memento
+npm install && npm run build
+dsh plugin --profile web add "$(pwd)"
+```
+
+Restart (or boot) `dsh web` so the host + client faces load:
+
+```sh
+env -u DSH_WEB_URL -u DSH_SHELL -u DSH_SESSION_ID dsh web --no-open
+```
+
+Uninstall:
+
+```sh
+dsh plugin --profile web remove dsh-memento
+# restart the web instance that had the plugin
+```
+
+---
+
+## First run — write your own `ME.md`
+
+On first boot the plugin creates `~/.dsh/memory/ME.md` from a **generic
+template** (rules + commented example lines only). It does **not** ship anyone
+else’s profile.
+
+1. Open the **Memory** rightbar.
+2. Replace the commented examples with facts that stay true for you.
+3. Save. New sessions inject that file verbatim.
+
+Existing `ME.md` is never overwritten by install or upgrade — only created when
+absent.
+
+Project lore lives in
+`~/.dsh/memory/projects/<key>/MEMORY.md` (Create from the pane when you want
+it). The inbox is `~/.dsh/memory/inbox.md`.
+
+---
+
+## Agent tools
+
+| Tool | Purpose |
+| --- | --- |
+| `memory_remember` | Append one line to the inbox (escape hatch; never touches ME / project) |
+| `memory_history_search` | Read-only archaeology over ended session logs (fail-open) |
+
+Triggers in chat (also inbox-only): `Remember this:`, `Remember:`, `Note this:`.
+
+---
+
+## Surfaces
+
+| Surface | Path / name |
+| --- | --- |
+| Vault | `~/.dsh/memory/` (`ME.md`, `inbox.md`, `projects/…/MEMORY.md`) |
+| Master switch | `~/.dsh/memory/.off` (pane On/Off) |
+| HTTP | `GET /api/dsh-memento/health`, `/state`, `/compliance`, … |
+| UI | Rightbar **Memory** |
+
+---
+
+## Design in five lines
+
+1. **`ME.md`** (~30 lines) and optional project **`MEMORY.md`** (~45 lines) are
+   the only always-injected tier.
+2. **The cap is pressure, not a block** — over-cap saves are accepted; you curate.
+3. **`inbox.md`** is append-only and never injected.
+4. **The agent never writes the injected tier** — promotion is a human pane edit.
+5. **Ritual over judgment** — read project memory before the first file edit;
+   compliance observes, never blocks.
+
+Deliberately absent: embeddings, Qdrant, FTS, promote ladders, frontmatter
+schemas, and LLM calls inside the plugin.
+
+---
+
+## Architecture
+
+Dual-face package (same bar as the other web rightbar plugins):
+
+- **Host** (`lib/index.js`, ESM) — vault, inject, inbox, compliance, HTTP, tools.
+- **Client** (`lib/client.js`, CJS ModuleLoader factory) — Memory rightbar.
+- **Glue** — `cordis.patch.yml` + `dsh.bundle` / `dsh.client` in `package.json`.
+
+Templates under `assets/` are **inlined at build time**; they are not read from
+disk at runtime.
+
+---
 
 ## License
 
-MIT, matching the sibling plugins (see `LICENSE`).
+MIT — see [`LICENSE`](./LICENSE).

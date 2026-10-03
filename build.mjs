@@ -116,6 +116,16 @@ await build({
   logLevel: 'warning',
 })
 await build({
+  entryPoints: [join(root, 'src/shared/promote.ts')],
+  outfile: join(root, 'lib/promote.js'),
+  bundle: true,
+  format: 'esm',
+  platform: 'node',
+  target: 'es2024',
+  sourcemap: true,
+  logLevel: 'warning',
+})
+await build({
   entryPoints: [join(root, 'src/host/enabled.ts')],
   outfile: join(root, 'lib/enabled.js'),
   bundle: true,

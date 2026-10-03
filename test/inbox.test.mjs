@@ -23,7 +23,9 @@ import {
   detectTrigger,
   formatEntry,
   inboxPath,
+  insertInboxLine,
   isoLocal,
+  removeInboxLine,
 } from '../lib/inbox.js'
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'memento-'))
@@ -208,6 +210,25 @@ test('separate instances do not share undo trails', () => {
     assert.equal(b.undo().undone, false) // B appended nothing
     const text = readFileSync(inbox, 'utf8')
     assert.ok(text.includes('from instance A'))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('insertInboxLine restores a removed line at the preferred position (R9 Undo)', () => {
+  const dir = tmp()
+  try {
+    const inbox = join(dir, 'memory', 'inbox.md')
+    mkdirSync(join(dir, 'memory'), { recursive: true })
+    writeFileSync(inbox, 'one\ntwo\nthree\n')
+    const removed = removeInboxLine(inbox, 2)
+    assert.equal(removed.removed, true)
+    assert.equal(removed.line, 'two')
+    assert.equal(readFileSync(inbox, 'utf8'), 'one\nthree\n')
+    const inserted = insertInboxLine(inbox, 2, 'two')
+    assert.equal(inserted.inserted, true)
+    assert.equal(inserted.n, 2)
+    assert.equal(readFileSync(inbox, 'utf8'), 'one\ntwo\nthree\n')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

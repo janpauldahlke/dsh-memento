@@ -36,6 +36,7 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync 
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { adoptFileText } from '../lib/reconcile.js'
+import { appendPromoteToDraft, draftContainsFact, inboxFact } from '../lib/promote.js'
 
 const BASE = 'http://127.0.0.1:3090'
 const PORT = 3090
@@ -473,13 +474,105 @@ try {
     record(true, '8', 'adoptFileText + stale mtime 409 + current mtime 200')
   })()
 
-  // ---------------------------------------------------- restore ME.md --------
-  if (meBefore !== null) {
-    writeFileSync(ME_PATH, meBefore)
-  }
-  assert(sha256Buf(ME_PATH) === (meBefore !== null ? sha256(meBefore) : null), 'ME.md restore failed')
+  // -------------------- check 9 (REVIEW-02 R9: promote draft → save → Undo) --
+  await (async () => {
+    // Seed a known ME + one inbox line; restore both at the end of this check.
+    const meSeed = Array.from({ length: 30 }, (_, i) => `cap seed ${i + 1}`).join('\n') + '\n'
+    const putSeed = await httpJson('/api/dsh-memento/file', { method: 'PUT', body: { target: 'me', content: meSeed } })
+    assert(putSeed.status === 200 && putSeed.json?.ok === true, 'seed ME for promote failed')
+    const meShaBeforePromote = sha256Buf(ME_PATH)
+
+    const fact = `r9 promote fact ${Date.now()}`
+    const cap = await httpJson('/api/dsh-memento/capture', { method: 'POST', body: { text: fact } })
+    assert(cap.status === 200 && cap.json?.ok === true && typeof cap.json.line === 'string', 'capture for promote failed')
+    const sourceLine = cap.json.line
+    const inboxBeforeDelete = readFileSync(INBOX_PATH)
+
+    // (a) promote appends to the draft; ME.md on disk is byte-unchanged until Save.
+    const stripped = inboxFact(sourceLine)
+    assert(stripped === fact, `inboxFact must strip the prefix (got ${JSON.stringify(stripped)})`)
+    const draft = appendPromoteToDraft(meSeed, stripped)
+    assert(draftContainsFact(draft, fact), 'draft must contain the promoted fact')
+    assert(sha256Buf(ME_PATH) === meShaBeforePromote, 'promote must not write ME.md until Save')
+
+    // (b) promote at cap yields lines > cap; save is still accepted.
+    const lineCount = draft.endsWith('\n') ? draft.slice(0, -1).split('\n').length : draft.split('\n').length
+    assert(lineCount === 31, `expected 31 lines after promote-at-cap, got ${lineCount}`)
+    const saved = await httpJson('/api/dsh-memento/file', { method: 'PUT', body: { target: 'me', content: draft } })
+    assert(saved.status === 200 && saved.json?.ok === true, `over-cap promote save rejected (status ${saved.status})`)
+    assert(saved.json.lines === 31 && saved.json.overCap === true, 'save must report lines > cap')
+    assert(readFileSync(ME_PATH, 'utf8') === draft, 'saved ME.md must equal the promoted draft')
+
+    // (c) after save, remove the source inbox line — remaining file byte-identical minus that line.
+    const { json: st } = await httpJson('/api/dsh-memento/state')
+    const hit = (st.inbox?.lines ?? []).find((l) => l.text === sourceLine)
+    assert(hit !== undefined, 'promoted source line must still be listed before delete')
+    const del = await httpJson(`/api/dsh-memento/inbox/line/${hit.n}`, { method: 'DELETE' })
+    assert(del.status === 200 && del.json?.removed === true, 'post-save inbox delete must remove the source line')
+    const afterDelete = readFileSync(INBOX_PATH, 'utf8')
+    assert(!afterDelete.includes(fact), 'source fact must be gone from inbox.md')
+    const beforeLines = inboxBeforeDelete.toString('utf8').split('\n')
+    if (beforeLines[beforeLines.length - 1] === '') beforeLines.pop()
+    const expectedKept = beforeLines.filter((l) => l !== sourceLine)
+    const expected = expectedKept.join('\n') + (expectedKept.length > 0 || inboxBeforeDelete.toString('utf8').endsWith('\n') ? '\n' : '')
+    // Trailing-newline: empty file after removing the only line may be ''.
+    if (expectedKept.length === 0) {
+      assert(afterDelete === '' || afterDelete === '\n', 'empty inbox after sole-line remove')
+    } else {
+      assert(afterDelete === expected || afterDelete === expectedKept.join('\n') + '\n',
+        'inbox must be byte-identical minus the promoted line')
+    }
+
+    // (d) Undo restores the exact line.
+    const restored = await httpJson('/api/dsh-memento/inbox/line', {
+      method: 'POST',
+      body: { text: sourceLine, n: hit.n },
+    })
+    assert(restored.status === 200 && restored.json?.inserted === true, `Undo restore failed (status ${restored.status})`)
+    assert(readFileSync(INBOX_PATH, 'utf8').includes(sourceLine), 'Undo must put the exact source line back')
+
+    // (e) → project on a missing file creates it from the template.
+    rmSync(dirname(PROJECT_PATH), { recursive: true, force: true })
+    assert(!existsSync(PROJECT_PATH), 'project must be absent for create-on-promote')
+    const seed = readFileSync(join(REPO, 'assets/MEMORY.template.md'), 'utf8')
+    const created = await httpJson('/api/dsh-memento/file', {
+      method: 'PUT',
+      body: { target: 'project', key: PROJECT_KEY, content: seed },
+    })
+    assert(created.status === 200 && created.json?.ok === true, '→ project create rejected')
+    assert(existsSync(PROJECT_PATH) && readFileSync(PROJECT_PATH, 'utf8') === seed, '→ project must seed the template')
+    const projectDraft = appendPromoteToDraft(seed, fact)
+    const projectSave = await httpJson('/api/dsh-memento/file', {
+      method: 'PUT',
+      body: { target: 'project', key: PROJECT_KEY, content: projectDraft, mtimeMs: created.json.mtimeMs },
+    })
+    assert(projectSave.status === 200 && draftContainsFact(readFileSync(PROJECT_PATH, 'utf8'), fact),
+      'promoted fact must land in the project file after Save')
+    rmSync(dirname(PROJECT_PATH), { recursive: true, force: true })
+
+    // Ritual + template copy checks that ride with R10/R12 (no server restart needed).
+    const ritual = readFileSync(join(REPO, 'assets/ritual.md'), 'utf8')
+    assert(ritual.includes('~/.dsh/memory/'), 'ritual.md must name the vault path')
+    assert(ritual.includes('read or grep'), 'ritual.md must tell the agent it may read/grep the vault')
+    const meTemplate = readFileSync(join(REPO, 'assets/ME.template.md'), 'utf8')
+    assert(!meTemplate.includes('11434'), 'ME.template.md must not list decommissioned ollama :11434')
+    assert(!meTemplate.includes('ollama'), 'ME.template.md must not mention ollama')
+
+    record(true, '9', 'promote draft append; at-cap save; inbox remove + Undo restore; → project create; R10/R12 assets')
+  })()
+
 } catch (error) {
   record(false, 'crash', String(error?.message ?? error))
+} finally {
+  // Always put the human's vault back — checks must not leave ME/inbox dirty.
+  try {
+    if (meBefore !== null) writeFileSync(ME_PATH, meBefore)
+    if (inboxBefore === null) rmSync(INBOX_PATH, { force: true })
+    else writeFileSync(INBOX_PATH, inboxBefore)
+    rmSync(dirname(PROJECT_PATH), { recursive: true, force: true })
+  } catch (restoreError) {
+    record(false, 'restore', String(restoreError?.message ?? restoreError))
+  }
 }
 
 const failed = results.some((r) => !r.ok)

@@ -18,6 +18,8 @@
  *   accepted and reported, never reformatted.
  * - DELETE /api/dsh-memento/inbox/line/N — remove exactly the Nth inbox
  *   line; every other byte is preserved (M4).
+ * - POST /api/dsh-memento/inbox/line — insert/restore one inbox line
+ *   (REVIEW-02 R9 Undo after promote-save).
  * - GET /api/dsh-memento/health — unchanged M0 contract.
  * - Session-start inject: `agent/pre-step` waterfall delivering the block as a
  *   plugin-attributed UserMessage (see inject.ts), with the M3 ritual
@@ -66,6 +68,8 @@ import {
   type FileRequest,
   type HealthPayload,
   type InboxDeletePayload,
+  type InboxInsertPayload,
+  type InboxInsertRequest,
   type StatePayload,
   type UndoPayload,
 } from '../shared/types.ts'
@@ -81,7 +85,15 @@ import {
   resolveDshHome,
   vaultPaths,
 } from './vault.ts'
-import { InboxStore, detectTrigger, inboxPath, isoLocal, readInboxTail, removeInboxLine } from './inbox.ts'
+import {
+  InboxStore,
+  detectTrigger,
+  inboxPath,
+  insertInboxLine,
+  isoLocal,
+  readInboxTail,
+  removeInboxLine,
+} from './inbox.ts'
 import {
   appendComplianceLog,
   complianceLogPath,
@@ -442,11 +454,10 @@ function registerFileRoute(ctx: Context): void {
 }
 
 /**
- * `DELETE /api/dsh-memento/inbox/line/N` — remove exactly the Nth inbox
- * line (1-based); every other byte of the file is preserved (M4). Registered
- * as a `prefix` route (the harness web server matches exact or prefix only);
- * the handler requires the pathname to be exactly `<prefix>/<digits>`.
- * Out-of-range N is a no-op (`removed: false`), never an error.
+ * Inbox line mutate prefix (M4 + REVIEW-02 R9):
+ *   DELETE /inbox/line/N — remove exactly the Nth line (1-based)
+ *   POST   /inbox/line   — insert/restore one line (`{ text, n? }`)
+ * Registered as a `prefix` route (exact or prefix match only).
  */
 function registerInboxDeleteRoute(ctx: Context, inbox: InboxStore): void {
   const unregister = ctx.webServer.register({
@@ -455,12 +466,42 @@ function registerInboxDeleteRoute(ctx: Context, inbox: InboxStore): void {
     handler: (req: IncomingMessage, res: ServerResponse) => {
       void (async () => {
         try {
-          if (req.method !== 'DELETE') {
-            send(res, 405, { ok: false, error: 'method not allowed; use DELETE' })
-            return
-          }
           const pathname = (req.url ?? '/').split('?')[0]
           const suffix = pathname.slice(INBOX_DELETE_ROUTE.length)
+
+          if (req.method === 'POST') {
+            if (suffix !== '' && suffix !== '/') {
+              send(res, 400, { ok: false, error: 'expected POST /api/dsh-memento/inbox/line' })
+              return
+            }
+            const raw = await readBody(req)
+            let parsed: Partial<InboxInsertRequest>
+            try {
+              parsed = JSON.parse(raw) as Partial<InboxInsertRequest>
+            } catch {
+              send(res, 400, { ok: false, error: 'expected JSON { text, n? }' })
+              return
+            }
+            if (typeof parsed.text !== 'string' || parsed.text.length === 0) {
+              send(res, 400, { ok: false, error: 'text required' })
+              return
+            }
+            const n = typeof parsed.n === 'number' ? parsed.n : Number.POSITIVE_INFINITY
+            const result = insertInboxLine(inbox.path, n, parsed.text)
+            const payload: InboxInsertPayload = {
+              ok: true,
+              inserted: true,
+              n: result.n,
+              line: result.line,
+            }
+            send(res, 200, payload)
+            return
+          }
+
+          if (req.method !== 'DELETE') {
+            send(res, 405, { ok: false, error: 'method not allowed; use DELETE or POST' })
+            return
+          }
           const match = /^\/(\d+)$/.exec(suffix)
           if (match === null) {
             send(res, 400, { ok: false, error: 'expected DELETE /api/dsh-memento/inbox/line/<n>' })

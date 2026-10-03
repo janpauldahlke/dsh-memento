@@ -314,7 +314,8 @@ try {
   await check('2', 'cap report via GET /api/dsh-memento/state', async () => {
     // Reuse human-owned :3090 — never killPort / spawn from inside an agent.
     const health = await waitForHealth(5_000)
-    eq(health.milestone, 'M1', 'health milestone is M1')
+    assert(Number(String(health.milestone ?? '').replace(/\D/g, '')) >= 1,
+      `health milestone ≥ M1 (got ${JSON.stringify(health.milestone)})`)
     // 40-line ME.md → overCap.
     const body = Array.from({ length: 40 }, (_, i) => `- cap-test line ${i + 1}`).join('\n') + '\n'
     writeFileSync(ME_PATH, body)

@@ -230,3 +230,32 @@ export function removeInboxLine(path: string, n: number): { removed: boolean; li
   writeFileAtomic(path, next)
   return { removed: true, line }
 }
+
+/**
+ * REVIEW-02 R9 Undo: insert one line at 1-based position `n` (clamped to the
+ * end when out of range). Collapses embedded newlines — inbox entries are
+ * single-line. Creates the file when absent. Returns the clamped `n` written.
+ */
+export function insertInboxLine(
+  path: string,
+  n: number,
+  text: string,
+): { inserted: true; n: number; line: string } {
+  let raw = ''
+  try {
+    raw = readFileSync(path, 'utf8')
+  } catch {
+    raw = ''
+  }
+  const lines = splitInboxLines(raw)
+  const line = text.replace(/[\r\n]+/g, ' ').trimEnd()
+  const idx = !Number.isInteger(n) || n < 1
+    ? lines.length
+    : Math.min(n - 1, lines.length)
+  lines.splice(idx, 0, line)
+  let next = lines.join('\n')
+  if (next.length > 0) next += '\n'
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileAtomic(path, next)
+  return { inserted: true, n: idx + 1, line }
+}

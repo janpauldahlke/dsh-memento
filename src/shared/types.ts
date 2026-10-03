@@ -35,7 +35,7 @@ export const FILE_ROUTE = '/api/dsh-memento/file'
 export const INBOX_DELETE_ROUTE = '/api/dsh-memento/inbox/line'
 
 /** Package version, mirrored from package.json by the host payloads. */
-export const VERSION = '0.6.1'
+export const VERSION = '0.6.2'
 
 /** Milestone the running build reports. */
 export const MILESTONE = 'M5'
@@ -248,6 +248,23 @@ export interface InboxDeletePayload {
   removed: boolean
   /** The removed line (only when `removed` is true). */
   line?: string
+}
+
+/** `POST /api/dsh-memento/inbox/line` body — restore a promoted line (REVIEW-02 R9 Undo). */
+export interface InboxInsertRequest {
+  /** Exact line text to restore (single logical line). */
+  text: string
+  /** Preferred 1-based position; clamped to the end when out of range. */
+  n?: number
+}
+
+/** `POST /api/dsh-memento/inbox/line` success payload. */
+export interface InboxInsertPayload {
+  ok: true
+  inserted: true
+  /** 1-based position actually written. */
+  n: number
+  line: string
 }
 
 /** One entry in a compliance report's `violations` (M3). */
