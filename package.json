@@ -1,6 +1,6 @@
 {
   "name": "dsh-local-memento",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Bounded-file memory for DeepSeek Harness local agents (ME.md + project MEMORY.md vault, cache-stable inject, inbox, Memory rightbar). No store, no embeddings, no LLM calls.",
   "type": "module",
   "main": "lib/index.js",
@@ -25,7 +25,8 @@
     "url": "https://github.com/janpauldahlke/dsh-memento/issues"
   },
   "scripts": {
-    "build": "node build.mjs && tsc --noEmit"
+    "build": "node build.mjs && tsc --noEmit",
+    "prepare": "node build.mjs"
   },
   "keywords": [
     "dsh-plugin",
@@ -57,6 +58,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^18.3.0",
+    "dsh-build-tools": "^0.1.1",
     "esbuild": "^0.25.0",
     "react": "^18.3.0",
     "typescript": "^5.6.0"
